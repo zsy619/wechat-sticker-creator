@@ -1,11 +1,11 @@
 ***
 
 name: wechat-sticker-skill
-description: Create WeChat emoji sticker series from any input (URL, topic, or content). Use when user asks to "做微信贴图", "创建微信表情包", "WeChat stickers", "微信emoji", "根据内容生成贴图", "做一套表情包", "生成贴图". Triggers on sticker creation, emoji design, reaction images, or any WeChat sticker-related request.
+description: Create WeChat emoji sticker series from any input (URL, topic, or content). Use when user asks to "做微信贴图", "微信贴图", "创建微信贴图包", "WeChat stickers", "微信emoji", "根据内容生成贴图", "做一套贴图", "生成贴图". Triggers on sticker creation, emoji design, reaction images, or any WeChat sticker-related request.
 version: 2.0.0
 metadata:
 author: zhushuyan
-tags: \["wechat", "sticker", "emoji", "表情包", "贴图", "微信表情"]
+tags: ["wechat", "sticker", "emoji", "表情包", "贴图", "微信贴图"]
 ----------------------------------------------------------
 
 # 微信贴图生成器 (WeChat Sticker Creator)
@@ -351,7 +351,7 @@ name: {sticker-name}
 type: {type}
 chinese_label: {中文标签}
 copy: {社交媒体推广文案，20-50字，将在贴图中展示}
-tags: [{tag1}, {tag2}, {tag3}]
+tags: [{tag1}, {tag2}, {tag3}, {tag4}, {tag5}]
 aspect_ratio: "1:1"
 ---
 
@@ -367,7 +367,7 @@ aspect_ratio: "1:1"
 - **风格**: {cartoon/kawaii/minimalist/hand-drawn/meme-style}
 - **色彩方案**: <推荐的主色调和配色>
 - **背景**: {transparent/white/单色背景}
-- **尺寸**: 500×500px（微信表情标准尺寸）
+- **尺寸**:1080×1440px（微信贴图标准尺寸）
 - **格式**: PNG透明背景
 
 ## 文案展示要求
@@ -444,12 +444,25 @@ BUN_X=bun bun ~/.agents/skills/baoyu-imagine/scripts/main.ts \
 
 > ⚠️ **重要**: 必须执行此兜底方案，不能跳过图片生成步骤。
 
+**脚本路径说明**:
+
+根据 skill 安装方式不同，脚本路径可能有所差异。以下提供三种定位方式：
+
+| 定位方式 | 命令 | 说明 |
+| ------ | ---- | ---- |
+| **默认路径** | `~/.agents/skills/wechat-sticker-skill/scripts/generate_stickers.py` | 常规安装位置 |
+| **自定义目录** | `$AGENTS_SKILLS_DIR/wechat-sticker-skill/scripts/generate_stickers.py` | 通过环境变量指定 |
+| **全局搜索** | `find ~ -name "generate_stickers.py" -type f 2>/dev/null` | 未知路径时使用 |
+
+> 💡 **快速定位**: 如果不确定脚本位置，可直接运行 `find ~ -name "generate_stickers.py" -type f 2>/dev/null | head -1` 获取完整路径。
+
 **PIL 生成命令**:
 
 ```bash
 cd wechat-stickers/{slug}
 
-python3 ~/.agents/skills/wechat-sticker-skill/scripts/generate_stickers.py \
+# 使用环境变量（如果已设置），否则使用默认路径
+python3 ${AGENTS_SKILLS_DIR:-~/.agents}/skills/wechat-sticker-skill/scripts/generate_stickers.py \
   --input prompts/ \
   --output assets/ \
   --theme cyberpunk
@@ -551,7 +564,7 @@ zip -r ../output/stickers-{slug}.zip *.png
 python3 ~/.agents/skills/wechat-sticker-skill/scripts/generate_cover.py \
   --output assets/xhs-post-{sticker-name}.png \
   --title "{贴图名称}" \
-  --subtitle "{描述文案（最长300字）}" \
+  --subtitle "{描述文案（最长50字）}" \
   --theme cyberpunk \
   --type sticker
 ```
@@ -560,7 +573,7 @@ python3 ~/.agents/skills/wechat-sticker-skill/scripts/generate_cover.py \
 
 - **最佳比例**: 3:4（竖版）
 - **推荐尺寸**: 1080×1440px
-- **描述文案**: 支持最长 300 字
+- **描述文案**: 支持最长 50 字
 - **适用场景**: 单独发布图片消息，类似小红书笔记风格
 
 ### 公众号封面生成
@@ -651,7 +664,7 @@ assets/
 - [ ] 文字清晰可读（如有）
 - [ ] 情感基调符合预期
 - [ ] 每张贴图都分配了标签（至少5个）
-- [ ] 每张贴图都包含推广文案（20-50字）
+- [ ] 每张贴图都包含社交媒体推广文案（20-50字）
 - [ ] 所有文件保存到正确的目录结构
 - [ ] 已验证 PIL 兜底方案（如所有API不可用）
 - [ ] 内容聚合分析完整准确
@@ -679,7 +692,7 @@ assets/
 
 ### 图片尺寸问题
 
-- **微信表情标准**: 500×500px
+- **微信贴图标准**:1080×1440px
 - **文件格式**: PNG透明背景
 - **如需调整**: 使用 Image.resize() 和 img.save() 方法
 
