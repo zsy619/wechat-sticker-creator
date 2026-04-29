@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "name": "wechat-sticker-skill",
+  "description": "根据链接、主题或内容自动生成微信表情包，包含文案和标签生成",
+  "version": "2.0.0",
+  "trigger_phrases": [
+    "做微信贴图",
+    "创建微信表情包",
+    "WeChat stickers",
+    "微信emoji",
+    "根据内容生成贴图",
+    "做一套表情包",
+    "生成贴图"
+  ],
+  "test_cases": [
+    {
+      "input": "摸鱼神器",
+      "expected_outputs": [
+        "生成至少3张贴图",
+        "包含文案内容",
+        "包含至少5个标签"
+      ]
+    },
+    {
+      "input": "https://example.com/tech-news",
+      "expected_outputs": [
+        "获取链接内容",
+        "提取核心主题",
+        "生成相关贴图"
+      ]
+    }
+  ],
+  "metrics": {
+    "贴图生成成功率": ">= 95%",
+    "文案生成完整性": ">= 90%",
+    "标签数量合规率": ">= 95%"
+  }
+}

@@ -1,3 +1,27 @@
-.cache
-.vscode
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Node modules (if any)
+node_modules/
+package-lock.json
+
+# Temporary files
+.cache/
+*.tmp
+*.temp
 log.txt
+
+# IDE
+.vscode/settings.json
+
+# Build outputs
+output/
+assets/*.png
+!assets/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db

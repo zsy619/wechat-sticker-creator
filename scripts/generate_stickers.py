@@ -1,345 +1,495 @@
 #!/usr/bin/env python3
 """
-generate_stickers.py - 微信贴图 PIL 生成器
-PIL 纯代码生成，无 API 依赖，所有 API 失败时的最终兜底方案
-参考 video-creator scripts/generate_cover.py 的 PIL 兜底机制
+generate_stickers.py - 微信表情包 PIL 生成器
+支持多种风格主题，默认使用赛博朋克风格
 """
 import os
 import sys
-import glob
-import argparse
 import math
+import glob
 from PIL import Image, ImageDraw, ImageFont
 
-# 字体路径（macOS 系统字体，按优先级）
+# 系统字体路径（macOS）
 FONT_PATHS = [
     "/System/Library/Fonts/PingFang.ttc",
     "/System/Library/Fonts/STHeiti Medium.ttc",
-    "/System/Library/Fonts/STHeiti Light.ttc",
     "/System/Library/Fonts/Helvetica.ttc",
     "/System/Library/Fonts/Arial.ttf",
 ]
 
-# 主题配色
+# 贴图尺寸标准
+STICKER_SIZE = 500
+
+# 风格主题配色方案
 THEMES = {
+    "cyberpunk": {
+        "name": "赛博朋克",
+        "bg_top": "#0D0D1A",
+        "bg_bot": "#1A0A2E",
+        "primary": "#00FFFF",
+        "secondary": "#FF00FF",
+        "accent": "#00FF88",
+        "grid": "#1A1A3A",
+        "glow": "#FF00FF",
+        "text": "#FFFFFF",
+    },
     "kawaii": {
-        "skin": (255, 220, 180),      # 肤色
-        "cheek": (255, 160, 160),      # 红晕
-        "eye": (60, 40, 40),           # 眼珠
-        "mouth": (220, 80, 80),         # 嘴巴
-        "hair": (80, 50, 30),           # 头发
-        "bg": (245, 240, 255),         # 背景
-        "shadow": (200, 180, 220),     # 阴影
+        "name": "可爱",
+        "bg_top": "#FFE4EC",
+        "bg_bot": "#FFC0CB",
+        "primary": "#FF69B4",
+        "secondary": "#FFB6C1",
+        "accent": "#FF1493",
+        "text": "#4A4A4A",
     },
     "minimal": {
-        "skin": (240, 235, 230),
-        "cheek": (200, 200, 210),
-        "eye": (40, 40, 40),
-        "mouth": (180, 60, 60),
-        "hair": (50, 50, 50),
-        "bg": (255, 255, 255),
-        "shadow": (220, 220, 220),
+        "name": "简约",
+        "bg_top": "#FFFFFF",
+        "bg_bot": "#F8F9FA",
+        "primary": "#212529",
+        "secondary": "#6C757D",
+        "accent": "#0D6EFD",
+        "text": "#212529",
     },
     "meme": {
-        "skin": (255, 220, 180),
-        "cheek": (255, 100, 100),
-        "eye": (30, 30, 30),
-        "mouth": (200, 50, 50),
-        "hair": (40, 40, 40),
-        "bg": (255, 240, 200),
-        "shadow": (200, 180, 150),
+        "name": "表情包",
+        "bg_top": "#FFE135",
+        "bg_bot": "#FFA500",
+        "primary": "#FF4500",
+        "secondary": "#FF6347",
+        "accent": "#DC143C",
+        "text": "#000000",
     },
     "hand-drawn": {
-        "skin": (255, 235, 210),
-        "cheek": (255, 180, 180),
-        "eye": (50, 30, 30),
-        "mouth": (200, 80, 80),
-        "hair": (60, 40, 20),
-        "bg": (255, 250, 240),
-        "shadow": (220, 200, 180),
+        "name": "手绘",
+        "bg_top": "#FFF8DC",
+        "bg_bot": "#FAEBD7",
+        "primary": "#8B4513",
+        "secondary": "#A0522D",
+        "accent": "#D2691E",
+        "text": "#2F2F2F",
+    },
+    "retro": {
+        "name": "复古像素",
+        "bg_top": "#8B0000",
+        "bg_bot": "#4A0E0E",
+        "primary": "#FFD700",
+        "secondary": "#FF8C00",
+        "accent": "#00FF00",
+        "text": "#FFFFFF",
+    },
+    "neon": {
+        "name": "霓虹灯",
+        "bg_top": "#0A0A0A",
+        "bg_bot": "#1A1A1A",
+        "primary": "#FF00FF",
+        "secondary": "#00FFFF",
+        "accent": "#FF6600",
+        "glow": "#FF00FF",
+        "text": "#FFFFFF",
     },
 }
 
 
-def get_font(size):
-    """加载可用字体"""
+def hex_to_rgb(hex_color):
+    """将十六进制颜色转换为RGB元组"""
+    h = hex_color.lstrip('#')
+    return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+
+def get_font(font_size):
+    """加载可用字体，返回第一个成功加载的字体"""
     for fp in FONT_PATHS:
         if os.path.exists(fp):
             try:
-                return ImageFont.truetype(fp, size)
+                return ImageFont.truetype(fp, font_size)
             except Exception:
                 pass
     return ImageFont.load_default()
 
 
-def draw_kawaii_face(draw, cx, cy, theme, expression="happy"):
-    """绘制 Kawaii 卡通脸"""
-    r = 120  # 脸半径
-
-    # 脸（圆形肤色）
-    draw.ellipse([cx - r, cy - r, cx + r, cy + r],
-                 fill=theme["skin"])
-
-    # 阴影（脸下方的微妙阴影）
-    draw.ellipse([cx - r + 10, cy - r + 10, cx + r - 10, cy + r - 10],
-                 outline=theme["shadow"], width=3)
-
-    # 头发（上部半圆）
-    hair_r = r + 5
-    draw.ellipse([cx - hair_r, cy - r - 40, cx + hair_r, cy + r - 50],
-                 fill=theme["hair"])
-    # 留海遮住额头
-    draw.ellipse([cx - r, cy - r - 10, cx + r, cy - 30],
-                 fill=theme["hair"])
-
-    # 眼睛
-    eye_y = cy - 15
-    eye_offset = 45
-
-    # 左眼（大眼睛）
-    draw.ellipse([cx - eye_offset - 25, eye_y - 30, cx - eye_offset + 25, eye_y + 30],
-                 fill=(255, 255, 255))  # 眼白
-    draw.ellipse([cx - eye_offset - 15, eye_y - 18, cx - eye_offset + 15, eye_y + 18],
-                 fill=theme["eye"])  # 瞳孔
-    draw.ellipse([cx - eye_offset - 5, eye_y - 8, cx - eye_offset + 5, eye_y + 2],
-                 fill=(255, 255, 255))  # 高光
-
-    # 右眼
-    draw.ellipse([cx + eye_offset - 25, eye_y - 30, cx + eye_offset + 25, eye_y + 30],
-                 fill=(255, 255, 255))
-    draw.ellipse([cx + eye_offset - 15, eye_y - 18, cx + eye_offset + 15, eye_y + 18],
-                 fill=theme["eye"])
-    draw.ellipse([cx + eye_offset - 5, eye_y - 8, cx + eye_offset + 5, eye_y + 2],
-                 fill=(255, 255, 255))
-
-    # 表情
-    if expression == "happy":
-        # 微笑（圆弧）
-        draw.arc([cx - 35, cy + 20, cx + 35, cy + 70], 0, 180,
-                 fill=theme["mouth"], width=5)
-    elif expression == "sad":
-        # 不开心（向下弯的弧线 + 眼泪）
-        draw.arc([cx - 35, cy + 35, cx + 35, cy + 75], 180, 360,
-                 fill=theme["mouth"], width=4)
-        # 眼泪
-        draw.line([cx - 55, eye_y + 15, cx - 55, eye_y + 45],
-                  fill=(100, 180, 255), width=4)
-        draw.line([cx + 55, eye_y + 15, cx + 55, eye_y + 45],
-                  fill=(100, 180, 255), width=4)
-    elif expression == "angry":
-        # 生气（皱眉 + 嘴巴）
-        draw.line([cx - 55, eye_y - 50, cx - 20, eye_y - 30],
-                  fill=theme["hair"], width=6)
-        draw.line([cx + 20, eye_y - 30, cx + 55, eye_y - 50],
-                  fill=theme["hair"], width=6)
-        draw.ellipse([cx - 30, cy + 25, cx + 30, cy + 55],
-                     fill=theme["mouth"])
-    elif expression == "surprised":
-        # 惊讶（圆嘴）
-        draw.ellipse([cx - 20, cy + 30, cx + 20, cy + 60],
-                     fill=theme["mouth"])
-    elif expression == "cool":
-        # 酷（墨镜 + 抿嘴）
-        # 墨镜
-        draw.ellipse([cx - 60, eye_y - 20, cx - 20, eye_y + 15],
-                     fill=(30, 30, 30))
-        draw.ellipse([cx + 20, eye_y - 20, cx + 60, eye_y + 15],
-                     fill=(30, 30, 30))
-        draw.line([cx - 20, eye_y - 3, cx + 20, eye_y - 3],
-                  fill=(30, 30, 30), width=4)
-        # 抿嘴
-        draw.arc([cx - 25, cy + 40, cx + 25, cy + 65], 0, 180,
-                 fill=theme["mouth"], width=4)
-    elif expression == "sleepy":
-        # 困（眯眼 + 口水）
-        draw.arc([cx - 50, eye_y - 5, cx - 20, eye_y + 15], 0, 180,
-                 fill=theme["eye"], width=3)
-        draw.arc([cx + 20, eye_y - 5, cx + 50, eye_y + 15], 0, 180,
-                 fill=theme["eye"], width=3)
-        # 口水
-        draw.line([cx + 25, cy + 70, cx + 35, cy + 100],
-                  fill=(150, 200, 255), width=5)
-    elif expression == "love":
-        # 喜欢（爱心眼 + 脸红）
-        draw.ellipse([cx - 55, eye_y - 25, cx - 15, eye_y + 5],
-                     fill=(255, 100, 150))  # 爱心代替眼睛
-        draw.ellipse([cx + 15, eye_y - 25, cx + 55, eye_y + 5],
-                     fill=(255, 100, 150))
-        # 腮红
-        draw.ellipse([cx - 75, cy + 5, cx - 45, cy + 35],
-                     fill=theme["cheek"])
-        draw.ellipse([cx + 45, cy + 5, cx + 75, cy + 35],
-                     fill=theme["cheek"])
-    elif expression == "working":
-        # 认真工作（专注眼神）
-        draw.ellipse([cx - 25, eye_y - 25, cx - 20, eye_y - 20],
-                     fill=theme["eye"])
-        draw.ellipse([cx + 20, eye_y - 25, cx + 25, eye_y - 20],
-                     fill=theme["eye"])
-        draw.ellipse([cx - 28, eye_y - 28, cx - 17, eye_y - 17],
-                     fill=(255, 255, 255))
-        draw.ellipse([cx + 17, eye_y - 28, cx + 28, eye_y - 17],
-                     fill=(255, 255, 255))
-        # 抿嘴
-        draw.arc([cx - 20, cy + 35, cx + 20, cy + 55], 0, 180,
-                 fill=theme["mouth"], width=3)
-
-    # 腮红（通用）
-    if expression not in ["love", "cool"]:
-        draw.ellipse([cx - 80, cy + 5, cx - 50, cy + 25],
-                     fill=theme["cheek"])
-        draw.ellipse([cx + 50, cy + 5, cx + 80, cy + 25],
-                     fill=theme["cheek"])
+def gradient_bg(draw, w, h, color_top, color_bot, direction="vertical"):
+    """绘制渐变背景"""
+    r1, g1, b1 = hex_to_rgb(color_top)
+    r2, g2, b2 = hex_to_rgb(color_bot)
+    for y in range(h):
+        t = y / h
+        r = int(r1 + (r2 - r1) * t)
+        g = int(g1 + (g2 - g1) * t)
+        b = int(b1 + (b2 - b1) * t)
+        draw.line([(0, y), (w, y)], fill=(r, g, b))
 
 
-def draw_text_in_sticker(draw, text, cx, bottom_y, font_size, color):
-    """在贴图底部绘制文字"""
+def draw_grid(draw, w, h, grid_color, spacing=40):
+    """绘制网格线（科技感）"""
+    r, g, b = hex_to_rgb(grid_color)
+    for x in range(0, w, spacing):
+        draw.line([(x, 0), (x, h)], fill=(r, g, b, 40))
+    for y in range(0, h, spacing):
+        draw.line([(0, y), (w, y)], fill=(r, g, b, 40))
+
+
+def draw_neon_glow(draw, cx, cy, radius, color):
+    """绘制霓虹光晕效果"""
+    r, g, b = hex_to_rgb(color)
+    for i in range(4):
+        alpha = 80 - i * 20
+        draw.ellipse(
+            [cx - radius - i*15, cy - radius - i*15,
+             cx + radius + i*15, cy + radius + i*15],
+            fill=(r, g, b, alpha)
+        )
+
+
+def draw_pixel_art(draw, x, y, size, color):
+    """绘制像素风格方块（复古主题）"""
+    r, g, b = hex_to_rgb(color)
+    draw.rectangle([x, y, x + size, y + size], fill=(r, g, b))
+
+
+def draw_handdrawn_border(draw, w, h, color, roughness=5):
+    """绘制手绘风格边框"""
+    r, g, b = hex_to_rgb(color)
+    # 顶部
+    for x in range(0, w, 20):
+        y_offset = int((math.sin(x * 0.1) + 1) * roughness)
+        draw.point((x, y_offset), fill=(r, g, b))
+        draw.point((x, y_offset + 1), fill=(r, g, b))
+    # 底部
+    for x in range(0, w, 20):
+        y_offset = h - int((math.sin(x * 0.1) + 1) * roughness) - 1
+        draw.point((x, y_offset), fill=(r, g, b))
+        draw.point((x, y_offset - 1), fill=(r, g, b))
+    # 左侧
+    for y in range(0, h, 20):
+        x_offset = int((math.sin(y * 0.1) + 1) * roughness)
+        draw.point((x_offset, y), fill=(r, g, b))
+        draw.point((x_offset + 1, y), fill=(r, g, b))
+    # 右侧
+    for y in range(0, h, 20):
+        x_offset = w - int((math.sin(y * 0.1) + 1) * roughness) - 1
+        draw.point((x_offset, y), fill=(r, g, b))
+        draw.point((x_offset - 1, y), fill=(r, g, b))
+
+
+def draw_text_centered(draw, text, y, font, color, max_width=None):
+    """居中绘制文字，支持自动换行"""
+    r, g, b = hex_to_rgb(color)
+    W = STICKER_SIZE
+    if max_width is None:
+        bbox = draw.textbbox((0, 0), text, font=font)
+        x = (W - (bbox[2] - bbox[0])) // 2
+        draw.text((x, y), text, fill=(r, g, b), font=font)
+        return y + (bbox[3] - bbox[1])
+    else:
+        lines = []
+        current = ""
+        for char in text:
+            test = current + char
+            bbox = draw.textbbox((0, 0), test, font=font)
+            if bbox[2] - bbox[0] > max_width and current:
+                lines.append(current)
+                current = char
+            else:
+                current = test
+        if current:
+            lines.append(current)
+        line_h = font.size * 1.4
+        total_h = len(lines) * line_h
+        start_y = y + (0 if total_h < 100 else 0)
+        for i, line in enumerate(lines):
+            bbox = draw.textbbox((0, 0), line, font=font)
+            x = (W - (bbox[2] - bbox[0])) // 2
+            draw.text((x, start_y + i * line_h), line, fill=(r, g, b), font=font)
+        return start_y + total_h
+
+
+def create_cyberpunk_sticker(text, output_path):
+    """生成赛博朋克风格贴图"""
+    img = Image.new("RGBA", (STICKER_SIZE, STICKER_SIZE), (0, 0, 0, 255))
+    draw = ImageDraw.Draw(img)
+    theme = THEMES["cyberpunk"]
+
+    gradient_bg(draw, STICKER_SIZE, STICKER_SIZE, theme["bg_top"], theme["bg_bot"])
+    draw_grid(draw, STICKER_SIZE, STICKER_SIZE, theme.get("grid", "#1A1A3A"), spacing=40)
+
+    if "glow" in theme:
+        draw_neon_glow(draw, STICKER_SIZE // 2, STICKER_SIZE // 2, 100, theme["glow"])
+
+    font_size = 60
     font = get_font(font_size)
     bbox = draw.textbbox((0, 0), text, font=font)
     text_w = bbox[2] - bbox[0]
-    x = cx - text_w // 2
-    draw.text((x, bottom_y), text, fill=color, font=font)
+    text_h = bbox[3] - bbox[1]
+    
+    text_x = (STICKER_SIZE - text_w) // 2
+    text_y = (STICKER_SIZE - text_h) // 2
+    
+    draw.text((text_x + 2, text_y + 2), text, fill=(0, 0, 0, 180), font=font)
+    draw.text((text_x, text_y), text, fill=hex_to_rgb(theme["primary"]), font=font)
 
-
-def generate_sticker(output_path, text, theme_name="kawaii", expression="happy"):
-    """生成单张贴图"""
-    W, H = 500, 500
-    theme = THEMES.get(theme_name, THEMES["kawaii"])
-
-    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-
-    # 背景
-    draw.ellipse([0, 0, W, H], fill=theme["bg"])
-
-    # 绘制卡通脸（居中偏上，留出底部文字空间）
-    cx, cy = W // 2, H // 2 - 30
-    draw_kawaii_face(draw, cx, cy, theme, expression)
-
-    # 绘制文字（如果有）
-    if text:
-        draw_text_in_sticker(draw, text, cx, H - 70, 40, (80, 60, 60))
-
-    # 添加装饰元素（气泡、星光等）
-    # 左上角小星星
-    draw_star(draw, 50, 60, 15, theme["cheek"])
-    # 右下角小星星
-    draw_star(draw, W - 50, H - 100, 12, theme["cheek"])
-
-    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     img.save(output_path, "PNG")
-    print(f"  ✅ {os.path.basename(output_path)}")
 
 
-def draw_star(draw, cx, cy, size, color):
-    """绘制五角星"""
-    points = []
-    for i in range(5):
-        angle = math.radians(i * 144 - 90)
-        x = cx + size * math.cos(angle)
-        y = cy + size * math.sin(angle)
-        points.append((x, y))
-        # 凹进去的点
-        angle2 = math.radians(i * 144 - 90 + 72)
-        x2 = cx + size * 0.4 * math.cos(angle2)
-        y2 = cy + size * 0.4 * math.sin(angle2)
-        points.append((x2, y2))
-    draw.polygon(points, fill=color)
+def create_kawaii_sticker(text, output_path):
+    """生成可爱风格贴图"""
+    img = Image.new("RGBA", (STICKER_SIZE, STICKER_SIZE), (0, 0, 0, 255))
+    draw = ImageDraw.Draw(img)
+    theme = THEMES["kawaii"]
+
+    gradient_bg(draw, STICKER_SIZE, STICKER_SIZE, theme["bg_top"], theme["bg_bot"])
+
+    cx, cy = STICKER_SIZE // 2, STICKER_SIZE // 2
+    draw.ellipse([cx - 120, cy - 120, cx + 120, cy + 120], fill=(255, 255, 255))
+
+    r, g, b = hex_to_rgb(theme["primary"])
+    draw.ellipse([cx - 150, cy - 150, cx + 150, cy + 150], outline=(r, g, b), width=5)
+
+    font_size = 50
+    font = get_font(font_size)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    text_x = (STICKER_SIZE - text_w) // 2
+    text_y = (STICKER_SIZE - text_h) // 2 - 20
+    draw.text((text_x, text_y), text, fill=hex_to_rgb(theme["text"]), font=font)
+
+    e1, e2 = hex_to_rgb("#4A4A4A"), hex_to_rgb("#4A4A4A")
+    draw.ellipse([cx - 60, cy - 40, cx - 30, cy - 10], fill=e1)
+    draw.ellipse([cx + 30, cy - 40, cx + 60, cy - 10], fill=e2)
+
+    img.save(output_path, "PNG")
 
 
-def generate_batch_from_manifest(manifest_path, assets_dir, theme_name="kawaii"):
-    """根据 manifest 生成所有贴图"""
-    import re
+def create_minimal_sticker(text, output_path):
+    """生成简约风格贴图"""
+    img = Image.new("RGBA", (STICKER_SIZE, STICKER_SIZE), (255, 255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    theme = THEMES["minimal"]
 
-    if not os.path.exists(manifest_path):
-        print(f"❌ Manifest not found: {manifest_path}")
-        return
+    r, g, b = hex_to_rgb(theme["primary"])
+    draw.ellipse([100, 100, 400, 400], outline=(r, g, b), width=3)
 
-    with open(manifest_path, "r", encoding="utf-8") as f:
+    font_size = 55
+    font = get_font(font_size)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    text_x = (STICKER_SIZE - text_w) // 2
+    text_y = (STICKER_SIZE - text_h) // 2
+    draw.text((text_x, text_y), text, fill=hex_to_rgb(theme["text"]), font=font)
+
+    img.save(output_path, "PNG")
+
+
+def create_meme_sticker(text, output_path):
+    """生成表情包风格贴图"""
+    img = Image.new("RGBA", (STICKER_SIZE, STICKER_SIZE), (255, 255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    theme = THEMES["meme"]
+
+    r, g, b = hex_to_rgb(theme["primary"])
+    draw.rectangle([50, 50, 450, 450], fill=(r, g, b), outline=(0, 0, 0), width=5)
+
+    font_size = 70
+    font = get_font(font_size)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    text_x = (STICKER_SIZE - text_w) // 2
+    text_y = (STICKER_SIZE - text_h) // 2
+    draw.text((text_x + 3, text_y + 3), text, fill=(0, 0, 0, 150), font=font)
+    draw.text((text_x, text_y), text, fill=hex_to_rgb("#FFFFFF"), font=font)
+
+    img.save(output_path, "PNG")
+
+
+def create_handdrawn_sticker(text, output_path):
+    """生成手绘风格贴图"""
+    img = Image.new("RGBA", (STICKER_SIZE, STICKER_SIZE), (255, 248, 220, 255))
+    draw = ImageDraw.Draw(img)
+    theme = THEMES["hand-drawn"]
+
+    draw_handdrawn_border(draw, STICKER_SIZE, STICKER_SIZE, theme["primary"], roughness=8)
+
+    font_size = 55
+    font = get_font(font_size)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    text_x = (STICKER_SIZE - text_w) // 2
+    text_y = (STICKER_SIZE - text_h) // 2
+    draw.text((text_x, text_y), text, fill=hex_to_rgb(theme["text"]), font=font)
+
+    img.save(output_path, "PNG")
+
+
+def create_retro_sticker(text, output_path):
+    """生成复古像素风格贴图"""
+    img = Image.new("RGBA", (STICKER_SIZE, STICKER_SIZE), (0, 0, 0, 255))
+    draw = ImageDraw.Draw(img)
+    theme = THEMES["retro"]
+
+    gradient_bg(draw, STICKER_SIZE, STICKER_SIZE, theme["bg_top"], theme["bg_bot"])
+
+    pixel_size = 25
+    for y in range(50, STICKER_SIZE - 50, pixel_size * 2):
+        for x in range(50, STICKER_SIZE - 50, pixel_size * 2):
+            if (x + y) % (pixel_size * 4) == 0:
+                draw_pixel_art(draw, x, y, pixel_size, theme["primary"])
+
+    font_size = 50
+    font = get_font(font_size)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    text_x = (STICKER_SIZE - text_w) // 2
+    text_y = (STICKER_SIZE - text_h) // 2
+    draw.text((text_x, text_y), text, fill=hex_to_rgb(theme["primary"]), font=font)
+
+    img.save(output_path, "PNG")
+
+
+def create_neon_sticker(text, output_path):
+    """生成霓虹灯风格贴图"""
+    img = Image.new("RGBA", (STICKER_SIZE, STICKER_SIZE), (0, 0, 0, 255))
+    draw = ImageDraw.Draw(img)
+    theme = THEMES["neon"]
+
+    font_size = 65
+    font = get_font(font_size)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    text_x = (STICKER_SIZE - text_w) // 2
+    text_y = (STICKER_SIZE - text_h) // 2
+
+    for i in range(8, 0, -2):
+        r, g, b = hex_to_rgb(theme["glow"])
+        draw.text((text_x, text_y), text, fill=(r, g, b, 30), font=font)
+
+    draw.text((text_x, text_y), text, fill=hex_to_rgb(theme["primary"]), font=font)
+
+    img.save(output_path, "PNG")
+
+
+THEME_GENERATORS = {
+    "cyberpunk": create_cyberpunk_sticker,
+    "kawaii": create_kawaii_sticker,
+    "minimal": create_minimal_sticker,
+    "meme": create_meme_sticker,
+    "hand-drawn": create_handdrawn_sticker,
+    "retro": create_retro_sticker,
+    "neon": create_neon_sticker,
+}
+
+
+def parse_prompt_file(prompt_file):
+    """解析提示词文件，提取贴图名称、文案和标签"""
+    if not os.path.exists(prompt_file):
+        return None, None, None
+
+    with open(prompt_file, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # 解析 sticker sections
-    pattern = r"## Sticker \d+: (.+?)\n\*\*Type\*\*: (.+?)\n"
-    matches = re.findall(pattern, content, re.DOTALL)
+    name = None
+    text = None
+    copy = None
+    in_copy_section = False
 
-    print(f"📦 Generating {len(matches)} stickers (theme: {theme_name})")
+    for line in content.split("\n"):
+        # 提取名称
+        if line.startswith("name:"):
+            name = line.split("name:")[1].strip()
+        # 提取 copy 文案
+        elif line.startswith("copy:"):
+            copy = line.split("copy:")[1].strip()
+        # 检测文案段落开始
+        elif "## 核心文案" in line or "## 内容" in line:
+            in_copy_section = True
+            continue
+        # 检测文案段落结束
+        elif in_copy_section and line.startswith("##"):
+            in_copy_section = False
+        # 提取文案内容
+        elif in_copy_section and line.strip() and not line.startswith("#"):
+            if not line.startswith("-") and not line.startswith("*"):
+                copy = line.strip()
+                in_copy_section = False
+        # 兼容旧格式：中文文字
+        elif "中文文字" in line or "Chinese text" in line.lower():
+            continue
+        # 提取短文字（备用）
+        elif text is None and len(line) > 0 and not line.startswith("#") and not line.startswith("-"):
+            if ":" not in line or len(line.split(":")[0]) > 10:
+                if len(line.strip()) <= 10:
+                    text = line.strip()
 
-    for i, (name, stype) in enumerate(matches, 1):
-        name = name.strip()
-        # 决定表情
-        if "emotion" in stype or "反应" in stype:
-            expr = "happy"
-        elif "work" in stype or "工作" in stype:
-            expr = "working"
-        elif "love" in stype or "喜欢" in stype:
-            expr = "love"
-        elif "sleepy" in stype or "困" in stype:
-            expr = "sleepy"
+    basename = os.path.splitext(os.path.basename(prompt_file))[0]
+    if name is None:
+        parts = basename.split("-", 1)
+        if len(parts) > 1:
+            name = parts[1]
         else:
-            expr = "happy"
+            name = basename
+    if text is None:
+        text = name
+    if copy is None:
+        copy = text
 
-        output_path = os.path.join(assets_dir, f"{i:02d}-{name}.png")
-        generate_sticker(output_path, name, theme_name, expr)
-
-
-def generate_all_from_prompts(prompts_dir, assets_dir, theme_name="kawaii"):
-    """根据 prompts/ 目录批量生成贴图"""
-    prompt_files = sorted(glob.glob(os.path.join(prompts_dir, "*.md")))
-    if not prompt_files:
-        print(f"❌ No prompt files found in {prompts_dir}")
-        return
-
-    print(f"📦 Generating {len(prompt_files)} stickers (theme: {theme_name})")
-
-    for pf in prompt_files:
-        with open(pf, "r", encoding="utf-8") as f:
-            content = f.read()
-
-        # 提取 frontmatter
-        import re
-        name_match = re.search(r"^name:\s*(.+?)$", content, re.MULTILINE)
-        label_match = re.search(r"^chinese_label:\s*(.+?)$", content, re.MULTILINE)
-        type_match = re.search(r"^type:\s*(.+?)$", content, re.MULTILINE)
-
-        name = name_match.group(1).strip() if name_match else os.path.basename(pf)
-        label = label_match.group(1).strip() if label_match else ""
-        stype = type_match.group(1).strip() if type_match else "reaction"
-
-        # 决定表情
-        if "emotion" in stype or "reaction" in stype:
-            expr = "happy"
-        elif "love" in stype or "喜欢" in stype:
-            expr = "love"
-        elif "work" in stype or "工作" in stype:
-            expr = "working"
-        elif "sleepy" in stype or "困" in stype:
-            expr = "sleepy"
-        else:
-            expr = "happy"
-
-        output_path = os.path.join(assets_dir, f"{os.path.basename(pf).replace('.md', '.png')}")
-        generate_sticker(output_path, label, theme_name, expr)
+    return name, text, copy
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="微信贴图 PIL 生成器")
-    parser.add_argument("--input", "-i", default="prompts/", help="prompts 目录或 manifest 文件路径")
-    parser.add_argument("--output", "-o", default="assets/", help="输出目录")
-    parser.add_argument("--theme", "-t", default="kawaii",
-                        choices=["kawaii", "minimal", "meme", "hand-drawn"],
-                        help="主题风格")
-    parser.add_argument("--manifest", "-m", default=None,
-                        help="sticker-manifest.md 路径（优先使用）")
+def main():
+    """主函数：批量生成贴图"""
+    import argparse
+    parser = argparse.ArgumentParser(description="生成微信表情包（支持多种风格主题）")
+    parser.add_argument("--input", "-i", required=True, help="提示词文件目录")
+    parser.add_argument("--output", "-o", required=True, help="输出图片目录")
+    parser.add_argument("--theme", "-t", default="cyberpunk",
+                        choices=list(THEMES.keys()),
+                        help=f"风格主题（默认: cyberpunk 赛博朋克）")
     args = parser.parse_args()
 
     os.makedirs(args.output, exist_ok=True)
 
-    if args.manifest:
-        generate_batch_from_manifest(args.manifest, args.output, args.theme)
-    elif os.path.isdir(args.input):
-        generate_all_from_prompts(args.input, args.output, args.theme)
-    else:
-        print("❌ Input must be a directory or manifest file")
-        sys.exit(1)
+    prompt_files = sorted(glob.glob(os.path.join(args.input, "*.md")))
+    
+    if not prompt_files:
+        print("⚠️  未找到提示词文件 (.md)")
+        return
 
-    print(f"\n✅ All stickers saved to: {args.output}")
+    theme_name = THEMES.get(args.theme, THEMES["cyberpunk"])["name"]
+    print(f"🎨 使用风格: {theme_name} ({args.theme})")
+    print(f"📂 输入目录: {args.input}")
+    print(f"📁 输出目录: {args.output}")
+    print()
+
+    generator = THEME_GENERATORS.get(args.theme, create_cyberpunk_sticker)
+    success_count = 0
+
+    for prompt_file in prompt_files:
+        name, text = parse_prompt_file(prompt_file)
+        if name is None:
+            continue
+
+        output_file = os.path.join(args.output, f"{os.path.basename(prompt_file).replace('.md', '.png')}")
+        try:
+            generator(text, output_file)
+            print(f"  ✓ {name}: {output_file}")
+            success_count += 1
+        except Exception as e:
+            print(f"  ✗ {name}: 生成失败 - {e}")
+
+    print()
+    print(f"✅ 完成！成功生成 {success_count}/{len(prompt_files)} 张贴图")
+    print(f"📦 输出目录: {args.output}")
+    print()
+    print("支持的风格主题:")
+    for key, theme in THEMES.items():
+        marker = "← 默认" if key == "cyberpunk" else ""
+        print(f"  - {key:12s}: {theme['name']} {marker}")
+
+
+if __name__ == "__main__":
+    main()
