@@ -17,6 +17,7 @@ metadata:
     - [重构] 圆形遮罩只应用于背景层，文字层独立绘制不受裁切
     - [修复] 文字底部改为以画布底边为基准（y=H-30=1410），圆形主题文字不再被裁切
     - [修复] WARP标签位置：改到主文字上方（label_draw在text_bottom_draw之前绘制，y=tt-行高-8）
+    - [修复] alpha_composite层叠顺序：bg_layer在下、text_layer在上，文字完全覆盖背景
 
     ### SKILL.md 完善
     - [更新] 版本 2.0.0 → 3.0.0
