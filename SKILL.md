@@ -2,10 +2,43 @@
 
 name: wechat-sticker-skill
 description: Create WeChat emoji sticker series from any input (URL, topic, or content). Use when user asks to "做微信贴图", "微信贴图", "创建微信贴图包", "WeChat stickers", "微信emoji", "根据内容生成贴图", "做一套贴图", "生成贴图". Triggers on sticker creation, emoji design, reaction images, or any WeChat sticker-related request.
-version: 2.0.0
+version: 3.0.0
 metadata:
-author: zhushuyan
-tags: ["wechat", "sticker", "emoji", "表情包", "贴图", "微信贴图"]
+  author: zhushuyan
+  updated: 2026-04-30
+  changelog: |
+    ## v3.0.x 更新记录 (2026-04-30)
+
+    ### generate_stickers.py 修复
+    - [修复] parse_prompt_file 返回值与 main() 解包数量不匹配（返回5值: name/text/copy/visual_elements/style_keywords）
+    - [修复] STICKER_SIZE=500 → W=1080, H=1440（微信贴图标准）
+    - [修复] 字体大小按1080×1440比例放大（60→140等，约×2.2）
+    - [重构] 所有风格 Image.new 背景从实色不透明改为透明 RGBA(0,0,0,0)
+    - [重构] 圆形遮罩只应用于背景层，文字层独立绘制不受裁切
+    - [修复] 文字底部改为以画布底边为基准（y=H-30=1410），圆形主题文字不再被裁切
+    - [修复] WARP标签位置：改到主文字上方（label_draw在text_bottom_draw之前绘制，y=tt-行高-8）
+
+    ### SKILL.md 完善
+    - [更新] 版本 2.0.0 → 3.0.0
+    - [新增] Prompt 格式 v3.0：visual_elements + style_keyword frontmatter 字段
+    - [新增] 实际项目 Prompt 示例（warp-terminal：AI补全、命令面板）
+    - [新增] 每张贴图的专属视觉生成规则（name→视觉函数路由机制）
+    - [更新] Manifest 格式 v3.0：引用 prompts 中的 visual_elements，不再重复写入文案
+    - [更新] 项目目录结构：新增 assets-{theme}/ 多风格目录
+    - [修复] 移除不存在的 references/token-stats.md 引用
+    - [修复] 残留 500×500 → 1080×1440
+    - [修复] PNG透明背景 描述统一为「PNG（透明或主题相关背景）」
+    - [新增] 故障排除章节：name字段不匹配、字体缺失
+    - [更新] 质量检查清单 v3.0
+
+    ## v3.0 核心机制
+    - 每张贴图通过 name 字段路由到专属 PIL 绘图函数（6种已实现）
+    - 文字固定在画布底部（距底边30px），不受圆形遮罩影响
+    - 背景层应用圆形遮罩（R=500），文字层独立叠加
+    - 支持7种风格：cyberpunk / kawaii / neon / retro / hand-drawn / minimal / meme
+
+    ## v2.0: 基础多风格支持
+tags: ["wechat", "sticker", "emoji", "表情包", "贴图", "微信贴图", "个性化", "专属视觉"]
 ----------------------------------------------------------
 
 # 微信贴图生成器 (WeChat Sticker Creator)
@@ -129,18 +162,19 @@ wechat-stickers/{topic-slug}/
 ├── sticker-manifest.md             # 贴图设计清单
 ├── copy.md                         # 推广文案文档
 ├── token-stats.md                  # Token输入输出统计
-├── prompts/                        # 贴图提示词目录
-│   ├── 01-{sticker-name}.md        # 贴图1提示词
+├── prompts/                        # 贴图提示词目录（含专属视觉规则）
+│   ├── 01-{sticker-name}.md       # 贴图1提示词（含visual_elements）
 │   ├── 02-{sticker-name}.md        # 贴图2提示词
 │   └── ...                         # 每张贴图一个文件
-├── assets/                         # 贴图图片目录
-│   ├── 01-{sticker-name}.png       # 贴图1图片
-│   ├── 02-{sticker-name}.png       # 贴图2图片
-│   └── ...                         # 每张贴图一张图片
-├── batch.json                      # 批量生成任务文件
+├── assets/                         # 默认风格贴图（--theme默认cyberpunk）
+│   └── *.png                       # 1080×1440px PNG
+├── assets-{theme1}/                # 风格1贴图（如assets-kawaii）
+├── assets-{theme2}/                # 风格2贴图（如assets-neon）
 └── output/                         # 最终输出目录
     └── stickers-{topic-slug}.zip   # ZIP打包文件（可选）
 ```
+
+> **注意**: 多风格生成时，每种风格单独存放于 `assets-{theme}/` 目录，避免覆盖。
 
 ## 内容聚合分析 (content-analysis.md)
 
@@ -202,12 +236,14 @@ wechat-stickers/{topic-slug}/
 | `text`      | 文字表情   | "摸鱼"、"太强了"、"绝了" |
 | `mascot`    | 角色形象   | 品牌IP、吉祥物反应      |
 
-### Manifest 文件格式
+### Manifest 文件格式（v3.0）
 
 ```markdown
 ---
 project: {topic-slug}
 sticker_count: {N}
+sticker_names: ["名称1", "名称2", ...]  # 对应prompts/下的name字段
+them es: ["cyberpunk", "kawaii"]     # 要生成的主题风格
 emotional_tone: {tone}
 target_audience: {audience}
 created: {YYYY-MM-DD HH:mm:ss}
@@ -218,11 +254,9 @@ created: {YYYY-MM-DD HH:mm:ss}
 ## 贴图1: {sticker-name}
 - **类型**: {type}
 - **中文标签**: {中文标签}
-- **英文标签**: {English label}
-- **描述**: {贴图展示内容详细描述}
+- **描述**: {贴图展示内容详细描述，对应prompts中的visual_elements}
 - **使用场景**: {何时发送此贴图}
-- **文案**: {社交媒体推广文案，20-50字，适合社交媒体发布，务必包含贴图展示内容并在贴图中展示}
-- **标签**: #{tag1} #{tag2} #{tag3} #{tag4} #{tag5}
+- **Prompt文件**: prompts/01-{sticker-name}.md（内含copy、visual_elements）
 
 ## 贴图2: {sticker-name}
 ... (至少3张，最多12张)
@@ -234,6 +268,8 @@ created: {YYYY-MM-DD HH:mm:ss}
 - 风格标签: #表情包 #卡通 #每日壁纸 #头像
 ```
 
+> **重要**: v3.0 中文案（copy）和视觉元素（visual_elements）不再单独写入 Manifest，而是写入对应的 `prompts/*.md` frontmatter 中。Manifest 只记录设计规划，具体内容由 Prompt 文件承载。
+
 ### 贴图命名规则
 
 - 使用 2-4 个汉字或英文单词
@@ -243,7 +279,7 @@ created: {YYYY-MM-DD HH:mm:ss}
 
 ## Token统计文档 (token-stats.md)
 
-参考 references/token-stats.md ，生成项目后，记录本次使用的 Token 消耗情况：
+生成项目后，记录本次使用的 Token 消耗情况（联网搜索消耗可使用平台计费工具估算）：
 
 ```markdown
 ---
@@ -262,17 +298,10 @@ created: {YYYY-MM-DD HH:mm:ss}
 
 | 阶段 | 输入Token | 输出Token | 备注 |
 |-----|----------|----------|------|
-| 内容聚合分析 | - | - | 联网搜索消耗 |
+| 内容聚合分析 | - | - | 联网搜索消耗（估算） |
 | 贴图设计 | - | - | Manifest生成 |
-| 文案生成 | - | - | copy.md生成 |
 | 提示词生成 | - | - | prompts生成 |
 | **总计** | **{total_input}** | **{total_output}** | |
-
-## 费用估算
-
-- **模型**: {model_name}
-- **单价**: 输入 ${input_price}/1M tokens，输出 ${output_price}/1M tokens
-- **预估费用**: ${estimated_cost}
 
 ## 优化建议
 
@@ -343,52 +372,115 @@ created: {YYYY-MM-DD HH:mm:ss}
 
 ## 提示词生成 (prompts/*.md)
 
-每张贴图生成一个独立的提示词文件：
+每张贴图生成一个独立的提示词文件，**每个贴图有专属视觉元素**（不只是模板文字）。
+
+### Prompt 格式（v3.0）
 
 ```markdown
 ---
 name: {sticker-name}
 type: {type}
-chinese_label: {中文标签}
-copy: {社交媒体推广文案，20-50字，将在贴图中展示}
-tags: [{tag1}, {tag2}, {tag3}, {tag4}, {tag5}]
-aspect_ratio: "1:1"
+copy: {核心文案，≥10字，将完整展示在贴图底部}
+style_keyword: [关键词1, 关键词2, 关键词3]
+visual_elements: [元素1, 元素2, 元素3]
+aspect_ratio: "3:4"
 ---
 
 # 贴图提示词: {sticker-name}
 
 ## 核心文案（必须展示在贴图中）
-{copy_text}（必须将这段文案以艺术字形式展示在贴图上）
+{copy_text}（完整文案，≥10字，展示在贴图底部）
 
-## 视觉描述
-<详细描述贴图应呈现的视觉效果，文案需醒目展示>
+## 视觉设计规则
+- **主体**: <专属视觉主体描述，如「代码补全下拉框」「⌘K 按键」等>
+- **元素**: <每个视觉元素的详细描述>
+- **动效**: <可选的动态描述>
 
 ## 风格要求
-- **风格**: {cartoon/kawaii/minimalist/hand-drawn/meme-style}
-- **色彩方案**: <推荐的主色调和配色>
-- **背景**: {transparent/white/单色背景}
-- **尺寸**:1080×1440px（微信贴图标准尺寸）
-- **格式**: PNG透明背景
+- **风格**: <由 --theme 参数决定: cyberpunk/kawaii/hand-drawn/retro/neon/minimal/meme>
+- **配色**: <由主题配色方案决定>
+- **主视觉**: <视觉占画面比例（如55%），文字框占底部40%>
+- **尺寸**: 1080×1440px（微信贴图标准）
+- **格式**: PNG（透明或主题相关背景）
 
-## 文案展示要求
-- 文案必须以艺术字形式展示在贴图上
-- 文案位置：居中或底部
-- 文案大小：醒目但不影响整体美观
-- 文案样式：符合整体风格
+## 文字展示
+- **位置**: 画布底部，居中
+- **左右边距**: 30px
+- **距底边**: 30px
+- **支持**: 多行换行
+```
 
-## 参考元素
-<任何参考图片或风格示例描述>
+**实际项目 Prompt 示例（warp-terminal）**:
 
-## 设计细节
-- 表情/动作: <具体描述>
-- 配饰/道具: <如有>
-- 背景元素: <背景中的装饰元素>
+```markdown
+---
+name: AI补全
+type: text
+copy: AI补全让我打字停不下来
+style_keyword: [代码补全条, 渐变文字, 灰色代码背景]
+visual_elements: [补全下拉框, 代码片段, Tab键图标, 灰色代码背景, 青色高亮文字]
+aspect_ratio: "3:4"
+---
 
-## 文案内容
-<用于社交媒体推广的文案内容，20-50字左右>
+# 贴图提示词: AI补全
 
-## 推荐标签
-#标签1 #标签2 #标签3 #标签4 #标签5 #标签6
+## 核心文案（必须展示在贴图中）
+AI补全让我打字停不下来
+
+## 视觉设计规则
+- **主体**: 代码编辑器补全下拉框，内含灰色代码片段
+- **补全框**: 深色半透明背景，白色边框，青色高亮当前选项
+- **代码文字**: 灰色代码字 + 青色补全提示文字
+- **Tab图标**: 右下角显示 Tab 键图标，暗示按Tab接受补全
+- **背景**: 浅灰色代码编辑区纹理
+
+## 风格要求
+- **风格**: cyberpunk（赛博朋克）
+- **配色**: 深灰背景 + 青色(#00FFFF)高亮 + 白色代码
+- **主视觉**: 补全下拉框占画面60%，文字框占底部40%
+- **尺寸**: 1080×1440px
+- **格式**: PNG（透明或主题相关背景）
+
+## 文字展示
+- 位置: 画布底部，居中
+- 左右边距: 30px
+- 距底边: 30px
+- 支持多行换行
+```
+
+```markdown
+---
+name: 命令面板
+type: text
+copy: ⌘K一按命令全搞定超方便
+style_keyword: [Command+K按键, 搜索框, 霓虹边框]
+visual_elements: [⌘K大按键, 深色搜索框, 模糊命令列表, 霓虹发光边框]
+aspect_ratio: "3:4"
+---
+
+# 贴图提示词: 命令面板
+
+## 核心文案（必须展示在贴图中）
+⌘K一按命令全搞定超方便
+
+## 视觉设计规则
+- **主体**: 超大 ⌘K 按键，占据画面中心上方40%
+- **按键设计**: 圆形/圆角矩形，青色边框发光，内含 ⌘ 和 K 两个字母
+- **搜索框**: 按键下方，半透明深色框，内有模糊的命令列表
+- **发光效果**: 按键边缘青色霓虹发光
+
+## 风格要求
+- **风格**: cyberpunk（赛博朋克）
+- **配色**: 黑色背景 + 青色发光(#00FFFF) + 洋红点缀(#FF00FF)
+- **主视觉**: ⌘K 按键占50%，文字框占底部40%
+- **尺寸**: 1080×1440px
+- **格式**: PNG（透明或主题相关背景）
+
+## 文字展示
+- 位置: 画布底部，居中
+- 左右边距: 30px
+- 距底边: 30px
+- 支持多行换行
 ```
 
 ## 图片生成
@@ -470,15 +562,15 @@ python3 ${AGENTS_SKILLS_DIR:-~/.agents}/skills/wechat-sticker-skill/scripts/gene
 
 **支持的风格主题**:
 
-| 主题           | 特点                   | 默认     |
-| ------------ | -------------------- | ------ |
-| `cyberpunk`  | 赛博朋克，霓虹灯效果，紫色/蓝色/青色系 | ✓ 默认   |
-| `kawaii`     | 圆脸卡通，大眼睛，粉色系         | <br /> |
-| `minimal`    | 简约线条，扁平化设计           | <br /> |
-| `meme`       | 表情包风格，高对比度           | <br /> |
-| `hand-drawn` | 手绘涂鸦风格               | <br /> |
-| `retro`      | 复古像素风格               | <br /> |
-| `neon`       | 霓虹灯风格，黑色背景           | <br /> |
+| 主题           | 配色主色     | 背景风格            | 默认     |
+| ------------ | ---------- | --------------- | ------ |
+| `cyberpunk`  | 青色 #00FFFF | 深色圆形+网格+光晕    | ✓ 默认   |
+| `kawaii`     | 粉色 #FF69B4 | 粉色渐变椭圆+圆脸眼睛   | <br /> |
+| `minimal`    | 深灰 #212529 | 白色+圆形轮廓         | <br /> |
+| `meme`       | 橙红 #FF4500 | 橙黄实色+边框         | <br /> |
+| `hand-drawn` | 棕色 #8B4513 | 米色+手绘抖动线条      | <br /> |
+| `retro`      | 金色 #FFD700 | 深红像素+棋盘格       | <br /> |
+| `neon`       | 洋红 #FF00FF | 深黑圆形+多层霓虹光晕    | <br /> |
 
 **macOS 字体路径**:
 
@@ -501,10 +593,42 @@ python3 ${AGENTS_SKILLS_DIR:-~/.agents}/skills/wechat-sticker-skill/scripts/gene
 
 **贴图生成规则**（默认）：
 - 画布尺寸：1080×1440px
-- 背景：透明（RGBA模式）
-- 风格：赛博朋克（默认），霓虹灯效果
+- 背景：主题相关（透明或实色）
+- 文字位置：**画布底部居中**，左右边距30px，距底边30px，多行换行
 - 文字渲染：使用 ImageFont.truetype
-- 输出格式：PNG透明背景
+- 输出格式：PNG
+
+### 每张贴图的专属视觉生成规则
+
+**核心机制**: PIL 脚本根据贴图 `name` 字段自动路由到专属视觉绘制函数，与 `--theme` 风格组合生成最终图片。
+
+**Prompt 中的专属视觉字段**:
+
+```yaml
+visual_elements: [元素1, 元素2, 元素3]
+style_keyword: [关键词1, 关键词2, 关键词3]
+```
+
+**当前已实现的 name → 视觉路由**:
+
+| name 值 | 视觉主体 | 视觉元素 |
+|---------|---------|---------|
+| `AI补全` | 代码补全框 | 终端窗口 + 下拉列表 + Tab键图标 |
+| `命令面板` | ⌘K 按键 | 圆形发光按键 + 搜索框 + 命令列表 |
+| `闪电速度` | 闪电符号 | ⚡ + 速度放射线 + 光芒爆发 |
+| `智能建议` | AI 大脑 | 神经网络 + 节点发光 + 终端建议条 |
+| `团队协作` | 多窗口 | 多个终端窗口并排 + 同步图标 + 连接线 |
+| `Warp粉丝` | 终端+红心 | 终端窗口 + 大红心 + 漂浮小心形 |
+
+**自定义新贴图流程**:
+1. 在 `prompts/` 下创建 `{num}-{name}.md`
+2. `name` 字段写中文贴图名（如 `摸鱼中`）
+3. `copy` 字段写核心文案（≥10字）
+4. `visual_elements` 列出视觉元素供 AI 生成参考
+5. `style_keyword` 列出风格关键词
+6. 运行 PIL 生成时，脚本根据 `name` 自动匹配合适的视觉结构
+
+> **注意**: `name` 字段决定视觉结构。若新建贴图的 `name` 不在已实现列表中，脚本将使用通用文字贴图（仅文字渲染，无专属视觉元素）。
 
 
 ## 最终输出
@@ -520,7 +644,7 @@ zip -r ../output/stickers-{slug}.zip *.png
 
 ```
 ═══════════════════════════════════════════
-    微信表情包生成完成！
+    微信贴图生成完成！
 ═══════════════════════════════════════════
 
 主题: {topic}
@@ -532,8 +656,8 @@ zip -r ../output/stickers-{slug}.zip *.png
   ✓ project.yaml          - 项目元数据
   ✓ content-analysis.md   - 内容聚合分析
   ✓ sticker-manifest.md   - 贴图设计清单
-  ✓ prompts/              - {N} 个提示词文件
-  ✓ assets/               - {N} 张PNG图片 (500×500)
+  ✓ prompts/              - {N} 个提示词文件（含专属视觉规则）
+  ✓ assets/               - {N} 张PNG图片 (1080×1440)
 
 推荐标签:
   #微信表情 #微信贴图 #可爱 #搞笑 #治愈
@@ -622,7 +746,7 @@ assets/
 ├── content-01-{name}.png         # 正文配图 (1080×607)
 ├── content-02-{name}.png         # 正文配图
 ├── thumb-01-{name}.png           # 缩略图 (200×200)
-├── 01-{sticker-name}.png         # 原始贴图 (500×500)
+├── 01-{sticker-name}.png         # 原始贴图 (1080×1440)
 └── ...
 ```
 
@@ -659,17 +783,17 @@ assets/
 在生成完成后，进行以下质量检查：
 
 - [ ] 至少生成 3 张贴图
-- [ ] 所有贴图为 PNG 格式且背景透明
-- [ ] 贴图风格保持一致
-- [ ] 文字清晰可读（如有）
-- [ ] 情感基调符合预期
-- [ ] 每张贴图都分配了标签（至少5个）
-- [ ] 每张贴图都包含社交媒体推广文案（20-50字）
+- [ ] 所有贴图为 PNG 格式
+- [ ] 所有贴图尺寸为 1080×1440px（3:4竖版）
+- [ ] 贴图风格保持一致（同一--theme）
+- [ ] 文字清晰可读，底部居中、左右边距30px、距底边30px
+- [ ] 每张贴图copy字段≥10字
+- [ ] 每张贴图的visual_elements字段已填写
 - [ ] 所有文件保存到正确的目录结构
-- [ ] 已验证 PIL 兜底方案（如所有API不可用）
+- [ ] PIL兜底方案已验证（所有API不可用时使用）
 - [ ] 内容聚合分析完整准确
-- [ ] 标签推荐覆盖全面
-- [ ] copy.md 文案文件已生成
+- [ ] 标签推荐覆盖全面（每张≥5个标签）
+- [ ] 同一项目多风格生成（如需）: 分别存放于 assets-{theme}/ 目录
 - [ ] token-stats.md 统计文件已生成
 
 ## 故障排除
@@ -692,7 +816,19 @@ assets/
 
 ### 图片尺寸问题
 
-- **微信贴图标准**:1080×1440px
-- **文件格式**: PNG透明背景
+- **微信贴图标准**: 1080×1440px
+- **文件格式**: PNG（透明或主题相关背景）
 - **如需调整**: 使用 Image.resize() 和 img.save() 方法
+
+### name 字段不匹配
+
+- **症状**: 生成的贴图只有文字，无专属视觉
+- **原因**: 新建贴图的 name 不在已实现路由列表中
+- **解决方案**: 在 generate_stickers.py 的 dispatch 字典中新增路由函数，或回退到通用文字贴图
+
+### 字体缺失
+
+- **症状**: 文字渲染为默认字体或警告
+- **原因**: macOS 系统字体路径不存在
+- **解决方案**: 检查 FONT_PATHS 列表，确保至少一个路径有效
 
