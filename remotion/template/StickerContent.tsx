@@ -1,167 +1,200 @@
 /**
- * StickerContent.tsx - 贴图内容组件（内层，使用 useCurrentFrame）
+ * StickerContent.tsx - 贴图内容组件
  *
- * 占位符替换规则（由 generate_frames.py 执行）：
- * __BG_COLOR__      → 主题背景色，如 #0D0D1A
- * __TEXT_COLOR__    → 主题文字色，如 #FFFFFF
- * __COPY__          → 核心文案，如 "随手一画，AI帮你算"
- * __PRIMARY__       → 主色，如 #00FFFF
- * __SECONDARY__     → 副色，如 #FF00FF
- * __FPS__           → 帧率，如 30
- * __W__            → 宽度，如 1080
- * __H__            → 高度，如 1440
- * __ELEMENTS_HTML__ → emoji 元素 JSX
+ * 占位符替换由 generate_frames.py 执行。
+ *
+ * __FPS__         → 帧率
+ * __W__           → 宽度
+ * __H__           → 高度
+ * __BG_COLOR__    → 背景色
+ * __TEXT_COLOR__  → 文字色
+ * __PRIMARY__     → 主色
+ * __SECONDARY__   → 副色
+ * __TOTAL_FRAMES__ → 总帧数
+ * __SEQUENCES__   → Sequence JSX 拼接字符串（每张贴图一个 Sequence）
  */
 
-import { useCurrentFrame, interpolate, spring } from 'remotion';
+import React from 'react';
+import { useCurrentFrame, interpolate, spring, Sequence } from 'remotion';
 
-const FPS = __FPS__;
-const W = __W__;
-const H = __H__;
-const BG = '__BG_COLOR__';
-const TEXT = '__TEXT_COLOR__';
-const COPY = '__COPY__';
-const PRIMARY = '__PRIMARY__';
-const SECONDARY = '__SECONDARY__';
+const FPS: number = __FPS__;
+const W: number = __W__;
+const H: number = __H__;
+const BG: string = '__BG_COLOR__';
+const TEXT: string = '__TEXT_COLOR__';
+const PRIMARY: string = '__PRIMARY__';
+const SECONDARY: string = '__SECONDARY__';
+const TOTAL: number = __TOTAL_FRAMES__;
 
-export const StickerContent = () => {
-  const frame = useCurrentFrame();
+/* ── 动画工具函数（全部显式传入 fps） ─────────────────── */
 
-  // 呼吸发光
-  const glowOpacity = interpolate(
+const glowOpacity = (frame: number): number =>
+  interpolate(
     spring({ frame, fps: FPS, config: { damping: 200, stiffness: 10 } }),
-    [0, 1],
-    [0.4, 1]
+    [0, 1], [0.4, 1]
   );
 
-  // 脉冲缩放
-  const scale = interpolate(frame, [0, 15, 30], [1, 1.06, 1], {
-    extrapolateRight: 'clamp',
-  });
+const pulseScale = (frame: number): number =>
+  interpolate(frame, [0, 15, 30], [1, 1.06, 1], { extrapolateRight: 'clamp' });
 
-  // 浮空动画
-  const floatY = interpolate(frame, [0, 30], [0, -18], {
-    extrapolateRight: 'clamp',
-  });
+const floatY = (frame: number): number =>
+  interpolate(frame, [0, 30], [0, -18], { extrapolateRight: 'clamp' });
 
-  // 文字闪烁（快速闪烁效果）
-  const textFlash = interpolate(frame, [0, 8, 15, 22, 30], [1, 0.85, 1, 0.9, 1], {
-    extrapolateRight: 'clamp',
-  });
+const textFlash = (frame: number): number =>
+  interpolate(frame, [0, 8, 15, 22, 30], [1, 0.85, 1, 0.9, 1], { extrapolateRight: 'clamp' });
 
-  // 文字颜色插值（主色↔白色切换）
-  const textColorPhase = interpolate(frame, [0, 30], [0, 1], { extrapolateRight: 'clamp' });
+const outerGlow = (frame: number): number =>
+  interpolate(frame, [0, 15, 30], [1, 1.4, 1], { extrapolateRight: 'clamp' });
 
-  // 外发光强度动画
-  const outerGlow = interpolate(frame, [0, 15, 30], [1, 1.4, 1], {
-    extrapolateRight: 'clamp',
-  });
+/* ── 5层霓虹 text-shadow ─────────────────────────────── */
+
+const neonTextShadow = (og: number): string => `
+  0 0 ${20 * og}px ${PRIMARY}60,
+  0 0 ${40 * og}px ${PRIMARY}40,
+  0 0 ${60 * og}px ${PRIMARY}25,
+  0 0 ${80 * og}px ${PRIMARY}15,
+  0 0 ${12 * og}px ${SECONDARY}80,
+  0 0 ${24 * og}px ${SECONDARY}50,
+  0 0 ${6 * og}px ${PRIMARY}cc,
+  0 0 ${10 * og}px ${PRIMARY}99,
+  0 0 ${3 * og}px rgba(255,255,255,0.9),
+  3px 3px 0 rgba(0,0,0,0.9),
+  4px 4px 8px rgba(0,0,0,0.7)
+`;
+
+/* ── 单张贴图场景组件（内层，使用 useCurrentFrame） ───── */
+
+type StickerSceneProps = {
+  copy: string;
+  emojis_str: string;  // JSON-encoded string array
+  frameOffset: number;
+};
+
+const StickerScene: React.FC<StickerSceneProps> = ({ copy, emojis_str, frameOffset }) => {
+  const frame = useCurrentFrame();
+  const localFrame = frame - frameOffset;
+  const dur = 90;
+
+  const g = glowOpacity(localFrame % dur);
+  const s = pulseScale(localFrame % dur);
+  const fy = floatY(localFrame % dur);
+  const fl = textFlash(localFrame % dur);
+  const og = outerGlow(localFrame % dur);
+
+  const emojis: string[] = JSON.parse(emojis_str);
 
   return (
-    <div
-      style={{
-        width: W,
-        height: H,
-        background: BG,
+    <div style={{
+      width: W, height: H,
+      background: BG,
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative',
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      overflow: 'hidden',
+    }}>
+      {/* 背景光晕层 */}
+      <div style={{
+        position: 'absolute',
+        top: '8%',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: W * 0.85,
+        height: H * 0.52,
+        background: `radial-gradient(ellipse at center, ${PRIMARY}28 0%, transparent 68%)`,
+        opacity: g * 0.65,
+        pointerEvents: 'none',
+      }} />
+      <div style={{
+        position: 'absolute',
+        bottom: '20%',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: W * 0.55,
+        height: H * 0.32,
+        background: `radial-gradient(ellipse at center, ${SECONDARY}22 0%, transparent 68%)`,
+        opacity: g * 0.5,
+        pointerEvents: 'none',
+      }} />
+
+      {/* 主视觉：emoji 元素 */}
+      <div style={{
         display: 'flex',
-        flexDirection: 'column',
+        flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
         position: 'relative',
+        zIndex: 2,
+        transform: `scale(${s}) translateY(${fy}px)`,
+        opacity: g,
+        gap: 40,
+        width: '100%',
+        height: '58%',
+      }}>
+        {emojis.map((emoji, i) => (
+          <span key={i} style={{
+            fontSize: 380,
+            lineHeight: 1,
+            filter: `drop-shadow(0 0 24px ${PRIMARY}) drop-shadow(0 0 48px ${SECONDARY}) drop-shadow(0 0 80px ${PRIMARY}50)`,
+            WebkitTextStroke: `1px ${PRIMARY}`,
+            paintOrder: 'stroke fill',
+            display: 'inline-block',
+          }}>{emoji}</span>
+        ))}
+      </div>
+
+      {/* 底部文案（≤96px 字体，5层霓虹阴影，渐变填充） */}
+      <div style={{
+        position: 'absolute',
+        bottom: 52,
+        left: 0,
+        right: 0,
+        textAlign: 'center',
+        fontSize: 90,
         fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
-        overflow: 'hidden',
-      }}
-    >
-      {/* 背景装饰：霓虹渐变光晕 */}
-      <div
-        style={{
-          position: 'absolute',
-          top: '15%',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: W * 0.7,
-          height: H * 0.5,
-          background: `radial-gradient(ellipse at center, ${PRIMARY}22 0%, transparent 70%)`,
-          opacity: glowOpacity * 0.6,
-          pointerEvents: 'none',
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          bottom: '25%',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: W * 0.5,
-          height: H * 0.3,
-          background: `radial-gradient(ellipse at center, ${SECONDARY}18 0%, transparent 70%)`,
-          opacity: glowOpacity * 0.5,
-          pointerEvents: 'none',
-        }}
-      />
-
-      {/* 主视觉区域 */}
-      <div
-        style={{
-          opacity: glowOpacity,
-          transform: `scale(${scale}) translateY(${floatY}px)`,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          position: 'relative',
-          zIndex: 2,
-        }}
-      >
-        {/* emoji 元素 */}
-        __ELEMENTS_HTML__
+        fontWeight: 'bold',
+        color: TEXT,
+        opacity: fl,
+        transform: `scale(${1 + (1 - fl) * 0.05})`,
+        textShadow: neonTextShadow(og),
+        padding: '0 36px',
+        zIndex: 3,
+        wordBreak: 'break-all',
+        // 文字渐变填充
+        background: `linear-gradient(180deg, #FFFFFF 0%, ${PRIMARY} 100%)`,
+        WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+        backgroundClip: 'text',
+      }}>
+        {copy}
       </div>
 
-      {/* 底部核心文案 */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 50,
-          left: 0,
-          right: 0,
-          textAlign: 'center',
-          fontSize: 140,
-          fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
-          fontWeight: 'bold',
-          color: TEXT,
-          opacity: textFlash,
-          transform: `scale(${1 + (1 - textFlash) * 0.05})`,
-          // 描边：4层不同颜色叠加产生霓虹效果
-          textShadow: `
-            /* 第1层：外扩散光晕（最外层，大范围低透明度）*/
-            0 0 ${20 * outerGlow}px ${PRIMARY}60,
-            0 0 ${40 * outerGlow}px ${PRIMARY}40,
-            0 0 ${60 * outerGlow}px ${PRIMARY}25,
-            0 0 ${80 * outerGlow}px ${PRIMARY}15,
-            /* 第2层：中距离光晕（副色）*/
-            0 0 ${12 * outerGlow}px ${SECONDARY}80,
-            0 0 ${24 * outerGlow}px ${SECONDARY}50,
-            /* 第3层：紧密辉光（主色高透明度）*/
-            0 0 ${6 * outerGlow}px ${PRIMARY}cc,
-            0 0 ${10 * outerGlow}px ${PRIMARY}99,
-            /* 第4层：超近辉光（白色高亮）*/
-            0 0 ${3 * outerGlow}px rgba(255,255,255,0.9),
-            /* 第5层：黑色阴影（立体感）*/
-            3px 3px 0 rgba(0,0,0,0.9),
-            4px 4px 8px rgba(0,0,0,0.7)
-          `,
-          padding: '0 40px',
-          zIndex: 3,
-          wordBreak: 'break-all',
-          // 文字渐变色
-          background: `linear-gradient(180deg, #FFFFFF 0%, ${PRIMARY} 100%)`,
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-        }}
-      >
-        {COPY}
-      </div>
+      {/* 圆形遮罩（cyberpunk 主题风格） */}
+      <div style={{
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        width: H * 0.92,
+        height: H * 0.92,
+        borderRadius: '50%',
+        boxShadow: `0 0 0 2px ${PRIMARY}40, 0 0 40px ${PRIMARY}30, 0 0 80px ${SECONDARY}20`,
+        pointerEvents: 'none',
+        zIndex: 1,
+      }} />
+    </div>
+  );
+};
+
+/* ── 主组件（外层，注册 Composition，不直接用帧） ─────── */
+
+export const StickerContent: React.FC = () => {
+  useCurrentFrame(); // 保持调用，但不直接参与动画逻辑
+  return (
+    <div>
+      __SEQUENCES__
     </div>
   );
 };
