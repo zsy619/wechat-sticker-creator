@@ -13,24 +13,23 @@ Usage:
     python3 scripts/generate_content_analysis.py \
         --input "https://github.com/xxx/ai-tool" \
         --output wechat-stickers/ai-tool/
-
-    python3 scripts/generate_content_analysis.py \
-        --input "这是一个关于程序员日常的表情包需求..." \
-        --output wechat-stickers/coder-life/
 """
 
-import os, sys, re, json, argparse
+import os, sys, re, argparse, subprocess
 
-# ── 主题配色（用于背景参考）────────────────────────────────
-THEMES = {
-    "cyberpunk":  {"primary": "#00FFFF", "secondary": "#FF00FF", "bg": "#0D0D1A"},
-    "kawaii":     {"primary": "#FF69B4", "secondary": "#FFB6C1", "bg": "#FFF0F5"},
-    "neon":       {"primary": "#FF00FF", "secondary": "#00FFFF", "bg": "#1A0033"},
-    "retro":      {"primary": "#FFD700", "secondary": "#FF6B35", "bg": "#2D1B00"},
-    "hand-drawn": {"primary": "#8B4513", "secondary": "#D2691E", "bg": "#FFF8DC"},
-    "minimal":    {"primary": "#212529", "secondary": "#495057", "bg": "#F8F9FA"},
-    "meme":       {"primary": "#FF4500", "secondary": "#FFD700", "bg": "#1A1A1A"},
-}
+# ── 主题配色（来自 _vocab）────────────────────────────────
+try:
+    from _vocab import THEMES
+except ImportError:
+    THEMES = {
+        "cyberpunk":  {"primary": "#00FFFF", "secondary": "#FF00FF", "bg": "#0D0D1A", "text": "#FFFFFF", "accent": "#00FF88"},
+        "kawaii":     {"primary": "#FF69B4", "secondary": "#FFB6C1", "bg": "#FFF0F5", "text": "#4A4A4A", "accent": "#FF1493"},
+        "neon":       {"primary": "#FF00FF", "secondary": "#00FFFF", "bg": "#1A0033", "text": "#FFFFFF", "accent": "#FF69B4"},
+        "retro":      {"primary": "#FFD700", "secondary": "#FF6B35", "bg": "#2D1B00", "text": "#FFFFFF", "accent": "#FF4500"},
+        "hand-drawn": {"primary": "#8B4513", "secondary": "#D2691E", "bg": "#FFF8DC", "text": "#4A4A4A", "accent": "#CD853F"},
+        "minimal":    {"primary": "#212529", "secondary": "#495057", "bg": "#F8F9FA", "text": "#212529", "accent": "#6C757D"},
+        "meme":       {"primary": "#FF4500", "secondary": "#FFD700", "bg": "#1A1A1A", "text": "#FFFFFF", "accent": "#FF6347"},
+    }
 
 # ── 输入类型检测 ──────────────────────────────────────────
 
@@ -39,75 +38,57 @@ def detect_input_type(raw_input):
     raw = raw_input.strip()
     if raw.startswith('http://') or raw.startswith('https://'):
         return 'url'
-    if len(raw) <= 15 and not re.search(r'[\u4e00-\u9fff]', raw):
-        # 纯英文短文本 = 主题词
-        return 'topic'
-    if len(raw) <= 15 and not re.search(r'\s', raw):
-        # 短文本无空格 = 主题词
+    # 纯英文字符（无空格、无中文）且较短 = 主题词
+    if re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_-]*', raw) and len(raw) <= 20:
         return 'topic'
     return 'text'
 
 # ── 内容获取 ──────────────────────────────────────────────
 
-def fetch_url_content(url):
-    """调用 baoyu-url-to-markdown 获取 URL 内容"""
-    import subprocess
+def fetch_url(url):
+    """使用 curl 获取网页内容（降级：移除对 baoyu-url-to-markdown 的依赖）"""
     try:
-        # 尝试 baoyu-url-to-markdown
         result = subprocess.run(
-            ['baoyu-url-to-markdown', url],
-            capture_output=True, text=True, timeout=60
+            ['curl', '-s', '-L', '--max-time', '30', '-A',
+             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+             url],
+            capture_output=True, text=True, timeout=35
         )
-        if result.returncode == 0:
+        if result.returncode == 0 and len(result.stdout) > 100:
             return result.stdout
-    except FileNotFoundError:
-        pass
-    except Exception:
-        pass
-
-    # fallback: 用 curl 简单获取
-    try:
-        import urllib.request
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=30) as r:
-            raw = r.read().decode('utf-8', errors='ignore')
-        # 简单提取 <title> 和前几段
-        title = re.search(r'<title>(.*?)</title>', raw, re.I)
-        title = title.group(1).strip() if title else ''
-        # 移除 HTML 标签
-        text = re.sub(r'<[^>]+>', ' ', raw)
-        text = re.sub(r'\s+', ' ', text).strip()
-        return f"# {title}\n\n{text[:3000]}"
     except Exception as e:
-        return f"[URL fetch failed: {e}]"
+        print(f"[WARN] curl 失败: {e}")
+    return ""
 
+
+# ── 联网搜索 ──────────────────────────────────────────────
 def web_search(query):
-    """调用 WebSearch 获取相关内容（通过 OpenClaw 内置命令）"""
-    import subprocess
+    """通过 claude --web-search 联网搜索"""
     try:
-        # 使用内置 WebSearch 工具
         result = subprocess.run(
-            ['WebSearch', query],
-            capture_output=True, text=True, timeout=60
+            ['claude', '--print', '-p',
+             f'search: {query}', 'Please search the web for: ' + query],
+            capture_output=True, text=True, timeout=90,
+            env={**os.environ, 'NO_CONFIG': '1'}
         )
-        if result.returncode == 0:
-            return result.stdout
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()[:2000]
     except FileNotFoundError:
         pass
     except Exception:
         pass
-    return f"[WebSearch unavailable for: {query}]"
+    return f"[WebSearch unavailable: {query}]"
 
-# ── LLM 内容聚合 ───────────────────────────────────────────
+# ── LLM 内容聚合 ──────────────────────────────────────────
 
-def build_content_analysis_prompt(raw_input, input_type, web_results):
+def build_content_analysis_prompt(raw_input, input_type, web_results, theme):
     """构建发送给 LLM 的内容聚合 prompt"""
-    theme_note = "\n".join([
+    theme_lines = '\n'.join([
         f"- {k}: primary={v['primary']}, secondary={v['secondary']}, bg={v['bg']}"
         for k, v in THEMES.items()
     ])
 
-    prompt = f"""你是微信贴图设计师，擅长分析用户需求并生成贴图设计方向。
+    return f"""你是微信贴图设计师，擅长分析用户需求并生成贴图设计方向。
 
 ## 用户输入
 {raw_input}
@@ -116,7 +97,7 @@ def build_content_analysis_prompt(raw_input, input_type, web_results):
 {input_type}
 
 ## 联网搜索结果
-{web_results[:4000] if web_results else '[无可用搜索结果]'}
+{web_results if web_results else '[无可用搜索结果]'}
 
 ## 你的任务
 生成一份「内容聚合分析」，供后续贴图设计使用。
@@ -149,33 +130,48 @@ def build_content_analysis_prompt(raw_input, input_type, web_results):
 - 适合的风格主题（可选：cyberpunk / kawaii / neon / retro / hand-drawn / minimal / meme）
 - 主色调偏好（根据情感基调推荐）
 - 建议的贴图数量（6 张标准 / 8 张扩展 / 4 张精简）
+- **推荐主题键**: 根据内容推荐最合适的主题（从 {list(THEMES.keys())} 中选择）
 
 ## 推荐视觉元素（按优先级）
 列出 10-20 个适合该主题的 emoji / 视觉元素 key（必须使用英文 key，参考 vocabulary）：
 如 brain, terminal, lightning, heart, trophy, rocket, coffee, code, algorithm 等
 ```
+
+### 主题参考
+{theme_lines}
+
+### 指定主题偏好
+用户已选择或推荐的主题：**{theme}**
+请结合该主题的配色和风格进行推荐。
 """
-    return prompt
 
 def call_llm(prompt):
-    """通过 OpenClaw 的 ai_func 聚合内容"""
+    """通过 claude --print -p 直接调用 LLM"""
     try:
-        from hermes_tools import terminal
-        # 使用 claude-code 或内置 ai 调用
-        escaped_prompt = prompt.replace('"', '\\"')
-        result = terminal(
-            f"""cat << 'LLM_PROMPT' | claude --print -p "
-system: 你是一个贴图设计师，擅长分析用户需求并生成贴图设计方向。
-user: {escaped_prompt}
-LLM_PROMPT"""
+        result = subprocess.run(
+            ['claude', '--print', '-p', prompt],
+            capture_output=True, text=True, timeout=120,
+            input=prompt,
+            env={**os.environ, 'NO_CONFIG': '1'}
         )
-        if result.get('output'):
-            return result['output']
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except FileNotFoundError:
+        return _llm_fallback_notice(prompt)
     except Exception:
         pass
+    return _llm_fallback_notice(prompt)
 
-    # fallback: 返回纯文本提示（用户手动处理）
-    return f"[LLM unavailable - please analyze manually]\n\n原始输入：{prompt[:500]}"
+def _llm_fallback_notice(prompt):
+    """LLM 不可用时的降级提示"""
+    # 尝试从 prompt 中提取原始输入（作为手动分析线索）
+    match = re.search(r'## 用户输入\s+(.{10,100})', prompt)
+    raw_input = match.group(1) if match else '[未提供]'
+    return (
+        f"[LLM unavailable - 请手动分析]\n\n"
+        f"原始输入：{raw_input}\n\n"
+        f"请参考上方格式，手动创建 content-analysis.md。"
+    )
 
 # ── 主函数 ────────────────────────────────────────────────
 
@@ -195,7 +191,7 @@ def main():
 
     # 1. 获取内容
     if input_type == 'url':
-        content = fetch_url_content(raw)
+        content = fetch_url(raw)
         print("[内容获取] baoyu-url-to-markdown / curl 完成")
         search_queries = [
             raw.split('/')[-1] if '/' in raw else raw,
@@ -206,22 +202,21 @@ def main():
         search_queries = [raw, raw + " 表情包", raw + " 微信贴图"]
     else:  # text
         content = raw
-        # 从文本中提取关键词作为搜索词
         words = re.findall(r'[\w\u4e00-\u9fff]{2,}', raw)
-        search_queries = words[:3] if words else [raw[:20]]
-        search_queries = [raw[:30]] + [q + " 表情包" for q in search_queries[:2]]
+        kw = words[:3] if words else [raw[:20]]
+        search_queries = [raw[:30]] + [q + " 表情包" for q in kw[:2]]
 
-    # 2. 联网搜索
+    # 2. 联网搜索（最多 3 个query）
     web_results = []
     for q in search_queries[:3]:
         print(f"[搜索] {q}")
         r = web_search(q)
-        web_results.append(f"## {q}\n{r}")
-    web_results_str = "\n\n".join(web_results)
+        web_results.append(f"## {q}\n{r[:500]}")
+    web_results_str = '\n\n'.join(web_results)
 
     # 3. LLM 聚合
     print("[LLM] 正在聚合内容...")
-    prompt = build_content_analysis_prompt(raw, input_type, web_results_str)
+    prompt = build_content_analysis_prompt(raw, input_type, web_results_str, args.theme)
     analysis = call_llm(prompt)
 
     # 4. 写入文件
@@ -230,11 +225,13 @@ def main():
         f.write(f"# 内容聚合分析\n\n")
         f.write(f"> **输入类型**: {input_type}\n")
         f.write(f"> **原始输入**: {raw}\n\n")
+        f.write(f"> **推荐主题**: {args.theme}\n\n")
         f.write("---\n\n")
         f.write(analysis)
 
     print(f"\n✅ 内容聚合分析已生成: {output_path}")
-    print(f"   下一步: python3 scripts/generate_manifest.py --input {output_path} --output {os.path.join(args.output, 'sticker-manifest.md')}")
+    next_step = os.path.join(args.output, 'sticker-manifest.md')
+    print(f"   下一步: python3 scripts/generate_manifest.py --input {output_path} --output {next_step}")
 
 if __name__ == '__main__':
     main()

@@ -1,6 +1,118 @@
 # Changelog - wechat-sticker-skill
 
-## v4.3.1 (2026-05-01) - 完整工作流串联 + 7个新脚本
+## v4.3.5 (2026-05-01) - Emoji分布 + 词汇表完整性 + __init__.py
+
+### 高严重修复
+
+- **FIX-F2**: `generate_frames.py` 的 `generate_pil_frames()` 函数（line ~705）— emoji 兜底渲染仍为同一坐标 Bug，修复为与 `pil_fallback.py` 一致的横向均匀分布（`emoji_elements` 列表 + `start_x + i*120`）
+- **FIX-F1**: `generate_manifest.py` — 移除 `build_manifest_prompt()` 内的 `from _vocab import VOCABULARY as _VOCAB` 本地 import，避免遮蔽模块级 `VOCABULARY`（该文件顶部已 `from _vocab import VOCABULARY`）；同时将 `THEMES` 加入顶部导入
+- **FIX-F3**: `generate_content_analysis.py` 的 fallback THEMES（`_vocab` 不可用时的内嵌副本）— 补全所有 5 键（`primary/secondary/bg/text/accent`），原来仅 3 键
+
+### 词汇表扩充
+
+- **FIX-F4**: `generate_frames.py` 两处 emoji_map fallback（新扩充的 fallback 副本）— 补全 `_vocab.EMOJI_MAP` 独有而原来 fallback 未覆盖的 key，包括 ai/robotic_arm/wifi/server/database/virus/race_car/helicopter/boom/zap/impact/vs/versus/gender系/heart系/melt/absolutely/tiger/dragon/fairy/ghost/skull/天气类/植物类等约 40 个 key
+
+### 基础设施
+
+- **FIX-F5**: `scripts/__init__.py` — 新建空 `__init__.py`，使 `scripts/` 成为合规 Python 包，解决直接运行脚本时 `from _vocab import` 的模块解析问题
+
+### 验证通过
+
+- 全部 12 个 Python 文件通过 `py_compile` 语法检查
+- `_vocab.py` 导入验证：`VOCABULARY`=281 keys（set）、`EMOJI_MAP`=169 keys（dict）、`THEMES`=7 themes
+- `filter_valid_keys(['brain','terminal','ai_chip'])` → valid=['brain','terminal','ai_chip']，invalid=['invalid_key'] ✅
+- `generate_frames.py` 总行数：834 行（从 801 行增加 33 行）
+
+### 高严重修复
+
+- **FIX-1**: `run_full_pipeline.py` — `cwd=script_dir` 拼写错误修复为 `cwd=cwd`（参数默认值生效）
+- **FIX-2**: `qa_check.py` — `valid_themes` NameError 修复（移除无效的变量引用）
+- **FIX-3**: `pil_fallback.py` — emoji 兜底渲染重叠 Bug（所有 emoji 画在同一坐标）修复为横向均匀分布
+
+### 数据源统一
+
+- **FIX-6**: `generate_frames.py` 两处 emoji_map 改为从 `_vocab.EMOJI_MAP` 导入（优先），fallback 保持内嵌副本
+- **FIX-7**: `generate_frames.py` 和 `pil_fallback.py` 的 THEMES 改为从 `_vocab.THEMES` 导入（优先），fallback 保持内嵌副本
+- **FIX-4**: `generate_prompts.py` / `generate_tags.py` — `_vocab` import 添加 try/except fallback（防止 _vocab 不存在时崩溃）
+
+## v4.3.3 (2026-05-01) - Theme流 + 格式约束 + 竖版裁剪
+
+### 修复
+
+- **T-1.5**: `--theme` 参数现在正确传递给 LLM prompt（build_content_analysis_prompt 新增 theme 参数）
+- **T-2.4**: `generate_manifest` 从 content-analysis 的 recommended_theme 字段提取主题，并写入 manifest 的 **推荐主题** 字段
+- **T-2.3**: `build_manifest_prompt` 使用 _vocab.VOCABULARY（281 key）提供词汇表约束，并增加严格 YAML frontmatter 格式示例
+- **T-1.3**: `fetch_url()` 移除对不存在的 baoyu-url-to-markdown 依赖，改用 curl + User-Agent 头
+- **T-2.2**: `parse_manifest` style 字段解析支持多种格式（主题键/风格/主题/recommended_theme）
+- **T-4.5**: Remotion --frames 参数验证（已确认正确：start-end 格式）
+- **T-6.2**: `qa_check.py` 新增 manifest 推荐主题合规性检查（check_manifest_compliance）
+- **T-4.6**: `generate_frames.py` AI 图像下载后增加竖版 3:4 中心裁剪逻辑（应对 API 返回方图/横图）
+
+### 清理
+
+- 修复 `fetch_url()` 死代码（line 61 return 后不可达语句）
+
+## v4.3.2 (2026-05-01) - 共享模块 + 致命Bug修复
+
+### 架构改进
+
+**T-2.1+T-3.1 — VOCABULARY 统一为共享模块**：
+- 新建 `scripts/_vocab.py`：单一数据源，包含 VOCABULARY（80+ key）、THEMES（7主题）、filter_valid_keys()
+- `generate_manifest.py` 和 `generate_prompts.py` 的内嵌 VOCABULARY 已移除，改为从 `_vocab` 导入
+- 消除三份副本不同步的根本性问题
+
+**T-5.1 — 新建 `scripts/generate_tags.py`**：
+- 根据 manifest 或 prompts 目录，生成微信贴图标签推荐文档（tags.md）
+- 内置 WECHAT_STICKER_TAGS 词库（7分类，80+ 标签）
+- THEME_TAG_MAP 自动推荐主题相关标签
+
+**T-TOP.3 — SKILL.md 目录结构更新**：
+- 新增 `_vocab.py`（共享词汇表）和 `generate_tags.py`（标签生成）的说明
+- 8个脚本时代（原来2个）
+
+### Bug 修复
+
+**T-1.1 — generate_content_analysis.py 致命崩溃修复**：
+- `call_llm()`：移除 `hermes_tools.call_llm()`（模块不存在），改用 `subprocess.run(['claude', '--print', '-p', prompt])`
+- `web_search()`：移除 `subprocess.run(['WebSearch', ...])`（CLI 不存在），改用 `claude --print -p search`
+- THEMES：从内嵌副本改为从 `_vocab` 导入（统一数据源）
+- `detect_input_type()`：改进纯英文短词判断，`re.fullmatch(r'[a-zA-Z][a-zA-Z0-9_-]*', raw)` 避免误判
+
+**T-3.2 — parse_manifest() visual_elements 正则解析改进**：
+- 修复脆弱正则 `re.findall(r'[`"（）()【】\[\]a-zA-Z_]+')` → `re.findall(r'[a-zA-Z_][a-zA-Z0-9_]*')`
+- 支持下划线/数字复合词（neural_network、debug_log 等）
+
+**T-4.4 — AI API size 参数改为竖版 3:4**：
+- seedream：`height: 1024` → `height: 1360`（3:4 竖版）
+- minim：`height: 1024` → `height: 1360`（3:4 竖版）
+- 避免 1:1 方形图在竖版贴图中的裁剪损失
+
+**T-6.1 — qa_check.py 改用 frontmatter 解析**：
+- 新增 `_parse_frontmatter()`：按行解析 YAML frontmatter
+- 新增 `_parse_list()`：安全解析 `[a, b, c]` 列表
+- `parse_prompts_vocabulary()` 改用 frontmatter 解析，替代脆弱正则
+- 优先使用 `_vocab` 共享词汇表（`--vocabulary` 参数降级）
+
+**T-5.2 — pack_stickers.py 缩略图高度安全整数除法**：
+- `thumb_h = h // len(files)` → `count = max(1, len(files))` + `thumb_h = h // count`
+- 防止 len(files)==0 时崩溃
+
+**T-TOP.1 — run_full_pipeline.py 捕获 subprocess stdout/stderr**：
+- `subprocess.run()` 增加 `capture_output=True, text=True`
+- 失败时打印 stdout/stderr（各最多1000字符），成功时打印 stdout（最多500字符）
+- 修复 `cwd=script_dir`（原来错误使用 `cwd=cwd`）
+
+**T-4.1+T-4.2 — elem_fns 确认同步**：
+- `pil_fallback.py` 与 `generate_frames.py` 的 elem_fns 22个函数逐行对比，完全一致
+- emoji 渲染逻辑使用 `emoji_map.get(elem)` 安全查找，无空字符串 bug
+
+### 清理
+
+**T-TOP.2 — 废弃老文件**：
+- `generate_stickers.py`（59KB）：重写为仅包含废弃警告的哑元脚本
+- `generate_cover.py`（10KB）：重写为仅包含废弃警告的哑元脚本
+
+
 
 ### 新增脚本（节点间自动化）
 

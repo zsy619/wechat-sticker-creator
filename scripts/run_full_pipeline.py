@@ -34,11 +34,20 @@ def run_step(step_name, cmd, cwd=None, timeout=300):
     print(f"\n{'='*60}")
     print(f"[步骤 {step_name}] {' '.join(cmd)}")
     print('='*60)
+    effective_cwd = cwd if cwd else os.getcwd()
     try:
-        result = subprocess.run(cmd, cwd=cwd, timeout=timeout)
+        result = subprocess.run(
+            cmd, cwd=effective_cwd, timeout=timeout, capture_output=True, text=True
+        )
         if result.returncode != 0:
             print(f"\n❌ 步骤 {step_name} 失败（退出码 {result.returncode}）")
+            if result.stdout:
+                print(f"[stdout]\n{result.stdout[:1000]}")
+            if result.stderr:
+                print(f"[stderr]\n{result.stderr[:1000]}", file=__import__('sys').stderr)
             return False
+        if result.stdout:
+            print(result.stdout[:500])
         print(f"\n✅ 步骤 {step_name} 完成")
         return True
     except subprocess.TimeoutExpired:

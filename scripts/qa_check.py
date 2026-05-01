@@ -16,6 +16,15 @@ Usage:
 import os, re, argparse
 from PIL import Image
 
+# ── 词汇表（来自 _vocab 共享模块）────────────────────────────
+try:
+    from _vocab import VOCABULARY as VOCAB_KEYS, filter_valid_keys
+    _vocab_available = True
+except ImportError:
+    VOCAB_KEYS = None
+    filter_valid_keys = None
+    _vocab_available = False
+
 # ── 标准规格 ──────────────────────────────────────────────
 
 STANDARD_W = 1080
@@ -39,8 +48,32 @@ def parse_vocabulary_from_md(vocab_path):
         keys.add(match.group(1))
     return keys
 
+def _parse_frontmatter(content):
+    """解析 frontmatter，返回 dict"""
+    front = {}
+    in_front = False
+    for line in content.split('\n'):
+        stripped = line.strip()
+        if stripped == '---':
+            if not in_front:
+                in_front = True
+            else:
+                break
+            continue
+        if in_front and ':' in line:
+            k, v = line.split(':', 1)
+            front[k.strip()] = v.strip().strip('"').strip("'")
+    return front
+
+def _parse_list(s):
+    """Parse a simple unquoted comma-separated list: [a, b, c]"""
+    s = s.strip()
+    if s.startswith('[') and s.endswith(']'):
+        s = s[1:-1]
+    return [x.strip() for x in s.split(',') if x.strip()]
+
 def parse_prompts_vocabulary(prompts_dir):
-    """从 prompts/ 目录提取所有 visual_elements key"""
+    """从 prompts/ 目录提取所有 visual_elements key（使用 frontmatter 解析）"""
     keys = set()
     if not os.path.isdir(prompts_dir):
         return keys
@@ -48,12 +81,16 @@ def parse_prompts_vocabulary(prompts_dir):
     for fname in os.listdir(prompts_dir):
         if not fname.endswith('.md'):
             continue
-        with open(os.path.join(prompts_dir, fname)) as f:
+        fpath = os.path.join(prompts_dir, fname)
+        with open(fpath) as f:
             content = f.read()
-        # 匹配 visual_elements: [key1, key2, ...]
-        for match in re.finditer(r'visual_elements:\s*\[([^\]]+)\]', content):
-            for k in re.findall(r'[\w_]+', match.group(1)):
+        front = _parse_frontmatter(content)
+        ve_str = front.get('visual_elements', '')
+        try:
+            for k in _parse_list(ve_str):
                 keys.add(k)
+        except Exception:
+            pass
     return keys
 
 # ── 检查函数 ─────────────────────────────────────────────
@@ -75,6 +112,23 @@ def check_format(fname):
     if ext in VALID_EXTS:
         return True, ext
     return False, ext
+
+def check_manifest_compliance(manifest_path, valid_themes):
+    """检查 manifest 推荐主题是否合规，返回 (ok, theme_or_error)"""
+    try:
+        with open(manifest_path) as f:
+            content = f.read()
+        m = re.search(r'\*\*推荐主题\*\*:\s*(\w+)', content)
+        if not m:
+            return False, "未找到推荐主题字段"
+        theme = m.group(1).strip()
+        if theme in valid_themes:
+            return True, theme
+        return False, f"'{theme}' 不在有效主题列表中"
+    except FileNotFoundError:
+        return False, "manifest 文件不存在"
+    except Exception as e:
+        return False, f"读取失败: {e}"
 
 def check_filename(fname):
     """检查文件名是否符合 {num}-{name}.png 格式"""
@@ -114,9 +168,12 @@ def main():
     input_path = args.input
     is_assets = os.path.isdir(input_path)
 
-    # 解析词汇表
+    # 词汇表来源优先级：_vocab > prompts-format.md
     vocab_keys = None
-    if args.vocabulary:
+    if _vocab_available:
+        vocab_keys = VOCAB_KEYS
+        print(f"[词汇表] 使用 _vocab共享模块（{len(VOCAB_KEYS)} 个 key）")
+    elif args.vocabulary:
         vocab_keys = parse_vocabulary_from_md(args.vocabulary)
         if vocab_keys:
             print(f"[词汇表] 加载 {len(vocab_keys)} 个 key")
@@ -161,6 +218,20 @@ def main():
             size_ok, detail = check_size(fpath)
             print_result('  尺寸', size_ok, detail)
             if not size_ok: file_ok = False
+
+            # manifest 主题检查（仅第一个文件检查一次）
+            if fname == sorted(f for f in os.listdir(input_path)
+                               if os.path.splitext(f)[1].lower() in {'.png','.gif'})[0]:
+                manifest_path = os.path.join(input_path, '..', 'sticker-manifest.md')
+                if os.path.exists(manifest_path):
+                    from _vocab import THEMES as VALID_THEMES
+                    theme_ok, theme_detail = check_manifest_compliance(
+                        manifest_path, set(VALID_THEMES.keys()))
+                    status = "✅" if theme_ok else "❌"
+                    print(f"  主题检查: {status} {theme_detail}")
+                    if not theme_ok: all_ok = False
+                else:
+                    print(f"  主题检查: ⚠️  未找到 manifest（跳过）")
 
             if not file_ok:
                 all_ok = False

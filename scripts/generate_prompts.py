@@ -13,49 +13,21 @@ Usage:
 
 import os, re, argparse
 
-# ── 词汇表 ────────────────────────────────────────────────
-
-VOCABULARY = {
-    'brain', 'neural_network', 'terminal', 'lightning', 'ai_chip', 'spotlight',
-    'network_node', 'button', 'code', 'algorithm', 'function', 'variable',
-    'debug', 'deploy', 'cpu', 'server', 'database', 'cloud', 'data',
-    'equals_sign', 'question_mark', 'eraser', 'checkmark', 'math_canvas', 'robot',
-    'heart', 'thumbs_up', 'clap', 'pray', 'muscle', 'thinking', 'eyes',
-    'trophy', 'medal', 'crown', 'star', 'fire', 'hundred',
-    'laugh', 'cry', 'angry', 'cool', 'shy', 'sleeping',
-    'rocket', 'alarm', 'bell', 'megaphone', 'wrench', 'hammer',
-    'scissors', 'pencil', 'book', 'lightbulb', 'bulb', 'envelope', 'gift',
-    'tada', 'balloon', 'confetti',
-    'coffee', 'tea', 'beer', 'cocktail', 'wine',
-    'pizza', 'rice', 'fruit', 'cake', 'cookie', 'bread',
-    'phone', 'camera', 'clipboard', 'chart', 'calendar',
-    'key', 'lock', 'folder', 'file', 'email', 'call',
-    'microphone', 'video', 'tv', 'clock', 'hourglass',
-    'pen', 'ruler', 'paperclip', 'stamp', 'inbox', 'outbox',
-    'earth', 'moon', 'sun', 'rainbow', 'snowflake', 'wave', 'anchor',
-    'airplane', 'car', 'bicycle', 'map', 'compass',
-    'flag', 'satellite', 'telescope', 'microscope',
-    'money', 'gem', 'love_letter', 'warning', 'no_entry', 'busy', 'free', 'secret',
-    'goal', 'puzzle', 'music', 'headphones', 'sound', 'mute',
-    'eye', 'ear', 'nose', 'footprints',
-    'bone', 'microbe', 'pill', 'syringe', 'thermometer',
-    'magnet', 'gear', 'atom', 'dna', 'biohazard', 'radioactive', 'bio',
-    'four_leaf', 'maple', 'cherry', 'tulip', 'rose', 'hibiscus', 'shell', 'feather',
-    'sparkle', 'diamond', 'fleur', 'comet',
-    'satellite', 'music',
-}
-
-# ── 主题配色表 ────────────────────────────────────────────
-
-THEMES = {
-    "cyberpunk":  {"primary": "#00FFFF", "secondary": "#FF00FF", "bg": "#0D0D1A", "text": "#FFFFFF"},
-    "kawaii":     {"primary": "#FF69B4", "secondary": "#FFB6C1", "bg": "#FFF0F5", "text": "#4A4A4A"},
-    "neon":       {"primary": "#FF00FF", "secondary": "#00FFFF", "bg": "#1A0033", "text": "#FFFFFF"},
-    "retro":      {"primary": "#FFD700", "secondary": "#FF6B35", "bg": "#2D1B00", "text": "#FFFFFF"},
-    "hand-drawn": {"primary": "#8B4513", "secondary": "#D2691E", "bg": "#FFF8DC", "text": "#4A4A4A"},
-    "minimal":    {"primary": "#212529", "secondary": "#495057", "bg": "#F8F9FA", "text": "#212529"},
-    "meme":       {"primary": "#FF4500", "secondary": "#FFD700", "bg": "#1A1A1A", "text": "#FFFFFF"},
-}
+# ── 词汇表（来自 _vocab 共享模块）────────────────────────────
+try:
+    from _vocab import VOCABULARY, THEMES, filter_valid_keys
+except ImportError:
+    VOCABULARY = {}
+    THEMES = {
+        'cyberpunk': {'primary': '#00FFFF', 'secondary': '#FF00FF', 'bg': '#0D0221', 'text': '#FFFFFF', 'accent': '#00FF88'},
+        'kawaii': {'primary': '#FF69B4', 'secondary': '#FFB6C1', 'bg': '#FFF0F5', 'text': '#4A4A4A', 'accent': '#FF69B4'},
+        'neon': {'primary': '#39FF14', 'secondary': '#FF073A', 'bg': '#0A0A0A', 'text': '#FFFFFF', 'accent': '#39FF14'},
+        'retro': {'primary': '#F4A460', 'secondary': '#8B4513', 'bg': '#2F2F2F', 'text': '#FFD700', 'accent': '#FF6347'},
+        'hand-drawn': {'primary': '#8B7355', 'secondary': '#D2691E', 'bg': '#FFF8DC', 'text': '#3E2723', 'accent': '#8B4513'},
+        'minimal': {'primary': '#333333', 'secondary': '#666666', 'bg': '#FFFFFF', 'text': '#000000', 'accent': '#333333'},
+        'meme': {'primary': '#FFD700', 'secondary': '#FF4500', 'bg': '#000000', 'text': '#FFFFFF', 'accent': '#FFD700'},
+    }
+    def filter_valid_keys(keys): return [k for k in keys if k in VOCABULARY]
 
 # ── Manifest 解析 ────────────────────────────────────────
 
@@ -77,31 +49,43 @@ def parse_manifest(path):
         copy_match = re.search(r'\*\*核心文案\*\*:\s*(.+)', section)
         copy = copy_match.group(1).strip() if copy_match else ''
 
-        # 提取 visual_elements（[el1, el2, el3] 格式）
+        # 提取 visual_elements（灵活的 key 解析：支持 [key1, key2] 或分散格式）
         ve_match = re.search(r'\*\*视觉元素\*\*:\s*\[([^\]]+)\]', section)
         if ve_match:
             elements_str = ve_match.group(1)
-            visual_elements = [e.strip() for e in elements_str.split(',') if e.strip()]
+            # 提取每个 key（英文/数字/下划线）
+            visual_elements = re.findall(r'[a-zA-Z_][a-zA-Z0-9_]*', elements_str)
+            visual_elements = [e.strip() for e in visual_elements if e.strip()]
         else:
-            # 尝试中文逗号分隔
+            # 降级：从整段文本提取所有看起来像 key 的词
             ve_match2 = re.search(r'\*\*视觉元素\*\*:\s*(.+)', section)
             if ve_match2:
                 raw = ve_match2.group(1)
-                elements = re.findall(r'[`"（）()【】\[\]a-zA-Z_]+', raw)
-                visual_elements = [e.strip('`"（）()【】[]').strip() for e in elements if e.strip()]
+                # 提取英文词（包括带下划线的复合词）
+                visual_elements = re.findall(r'[a-zA-Z_][a-zA-Z0-9_]*', raw)
+                visual_elements = [e for e in visual_elements if len(e) > 2]
             else:
                 visual_elements = []
 
-        # 提取风格
-        style_match = re.search(r'\*\*风格\*\*:\s*\[([^\]]+)\]', section)
+        # 提取风格（支持多种格式：主题键/风格/主题）
+        style_match = re.search(r'\*\*主题键\*\*:\s*(\w+)', section)
+        if not style_match:
+            style_match = re.search(r'\*\*风格\*\*:\s*\[([^\]]+)\]', section)
+        if not style_match:
+            style_match = re.search(r'theme:\s*(\w+)', content)
         if style_match:
-            style_str = style_match.group(1)
-            style_keyword = [s.strip() for s in style_str.split(',')]
+            theme_candidate = style_match.group(1).strip()
+            if theme_candidate in THEMES:
+                style_keyword = [theme_candidate]
+            else:
+                style_keyword = [style_match.group(1).strip()]
         else:
             style_keyword = ['cyberpunk']
 
-        # 提取 theme（从文档中的 manifest 级别 theme 字段）
-        theme_match = re.search(r'\*\*主题(?:键)?\*\*:\s*(\w+)', section)
+        # 提取 theme（项目级别，**主题** 字段优先）
+        theme_match = re.search(r'\*\*主题\*\*:\s*(\w+)', content)
+        if not theme_match:
+            theme_match = re.search(r'recommended_theme.*?:\s*(\w+)', content)
         if not theme_match:
             theme_match = re.search(r'theme:\s*(\w+)', content)
         theme = theme_match.group(1).strip() if theme_match else 'cyberpunk'
@@ -170,9 +154,7 @@ aspect_ratio: "3:4"
 
 def validate_vocabulary(visual_elements):
     """返回 (valid_elements, invalid_elements)"""
-    valid = [e for e in visual_elements if e in VOCABULARY]
-    invalid = [e for e in visual_elements if e not in VOCABULARY]
-    return valid, invalid
+    return filter_valid_keys(visual_elements)
 
 # ── 主函数 ───────────────────────────────────────────────
 

@@ -13,15 +13,18 @@ import os, sys, glob, argparse
 # ── 常量 ───────────────────────────────────────────────────
 W, H = 1080, 1440
 
-THEMES = {
-    "cyberpunk":  {"primary": "#00FFFF", "secondary": "#FF00FF", "bg": "#0D0D1A", "text": "#FFFFFF", "accent": "#00FF88"},
-    "kawaii":     {"primary": "#FF69B4", "secondary": "#FFB6C1", "bg": "#FFF0F5", "text": "#4A4A4A", "accent": "#FF1493"},
-    "neon":       {"primary": "#FF00FF", "secondary": "#00FFFF", "bg": "#1A0033", "text": "#FFFFFF", "accent": "#FF69B4"},
-    "retro":      {"primary": "#FFD700", "secondary": "#FF6B35", "bg": "#2D1B00", "text": "#FFFFFF", "accent": "#FF4500"},
-    "hand-drawn": {"primary": "#8B4513", "secondary": "#D2691E", "bg": "#FFF8DC", "text": "#4A4A4A", "accent": "#CD853F"},
-    "minimal":    {"primary": "#212529", "secondary": "#495057", "bg": "#F8F9FA", "text": "#212529", "accent": "#6C757D"},
-    "meme":       {"primary": "#FF4500", "secondary": "#FFD700", "bg": "#1A1A1A", "text": "#FFFFFF", "accent": "#FF6347"},
-}
+try:
+    from _vocab import THEMES
+except ImportError:
+    THEMES = {
+        "cyberpunk":  {"primary": "#00FFFF", "secondary": "#FF00FF", "bg": "#0D0D1A", "text": "#FFFFFF", "accent": "#00FF88"},
+        "kawaii":     {"primary": "#FF69B4", "secondary": "#FFB6C1", "bg": "#FFF0F5", "text": "#4A4A4A", "accent": "#FF1493"},
+        "neon":       {"primary": "#FF00FF", "secondary": "#00FFFF", "bg": "#1A0033", "text": "#FFFFFF", "accent": "#FF69B4"},
+        "retro":      {"primary": "#FFD700", "secondary": "#FF6B35", "bg": "#2D1B00", "text": "#FFFFFF", "accent": "#FF4500"},
+        "hand-drawn": {"primary": "#8B4513", "secondary": "#D2691E", "bg": "#FFF8DC", "text": "#4A4A4A", "accent": "#CD853F"},
+        "minimal":    {"primary": "#212529", "secondary": "#495057", "bg": "#F8F9FA", "text": "#212529", "accent": "#6C757D"},
+        "meme":       {"primary": "#FF4500", "secondary": "#FFD700", "bg": "#1A1A1A", "text": "#FFFFFF", "accent": "#FF6347"},
+    }
 
 # ── 字体 ───────────────────────────────────────────────────
 
@@ -185,93 +188,31 @@ def pil_fallback(name, copy, visual_elements, theme_key, output_path):
         ),
     }
 
-    # 渲染所有 visual_elements
+    # 渲染所有 visual_elements：先尝试 elem_fns 绘图，未匹配的做 emoji 兜底
+    emoji_elements = []
     for elem in visual_elements:
         fn = elem_fns.get(elem)
         if fn:
             fn()
         else:
-            # 兜底：尝试作为 emoji 字符渲染（覆盖80+词汇表中所有 emoji 元素）
-            # 从 visual_elements 直接获取 emoji 映射
-            emoji_map = {
-                "brain": "🧠", "ai大脑": "🧠", "ai计算": "🧠",
-                "神经网络": "🧠", "neural_network": "🧠",
-                "terminal": "💻", "终端窗口": "💻",
-                "lightning": "⚡", "闪电": "⚡", "zap": "⚡",
-                "equals_sign": "＝", "等号": "＝",
-                "question_mark": "？", "问号": "？",
-                "eraser": "🧹", "橡皮擦": "🧹",
-                "checkmark": "✓", "对勾": "✓",
-                "math_canvas": "📐", "canvas": "📐", "画布": "📐",
-                "ai_chip": "🤖", "芯片": "🤖", "robot": "🤖",
-                "spotlight": "🔦", "光晕": "🔦",
-                "network_node": "🔗", "网络节点": "🔗", "link": "🔗",
-                "button": "🔘", "按钮": "🔘",
-                "code": "💻", "cpu": "🖥️", "server": "🗄️",
-                "database": "🗃️", "cloud": "☁️", "data": "📊",
-                "algorithm": "🔣", "function": "ƒ", "variable": "x",
-                "debug": "🐛", "deploy": "🚀",
-                "heart": "❤", "红心": "❤",
-                "thumbs_up": "👍", "clap": "👏",
-                "pray": "🙏", "muscle": "💪",
-                "thinking": "🤔", "eyes": "👀",
-                "trophy": "🏆", "medal": "🏅", "crown": "👑",
-                "star": "⭐", "fire": "🔥", "hundred": "💯",
-                "laugh": "😂", "cry": "😭", "angry": "😡",
-                "cool": "😎", "shy": "😳", "sleeping": "😴",
-                "rocket": "🚀", "alarm": "⏰", "bell": "🔔",
-                "megaphone": "📢", "wrench": "🔧", "hammer": "🔨",
-                "scissors": "✂️", "pencil": "✏️", "book": "📖",
-                "lightbulb": "💡", "bulb": "💡",
-                "envelope": "✉️", "gift": "🎁",
-                "tada": "🎉", "balloon": "🎈", "confetti": "🎊",
-                "coffee": "☕", "tea": "🍵", "beer": "🍺",
-                "cocktail": "🍸", "wine": "🍷",
-                "pizza": "🍕", "rice": "🍚", "fruit": "🍎",
-                "cake": "🎂", "cookie": "🍪", "bread": "🍞",
-                "phone": "📱", "camera": "📷", "clipboard": "📋",
-                "chart": "📈", "calendar": "📅",
-                "key": "🔑", "lock": "🔒",
-                "folder": "📁", "file": "📄",
-                "email": "📧", "call": "📞",
-                "microphone": "🎤", "video": "🎬", "tv": "📺",
-                "clock": "⏱️", "hourglass": "⏳",
-                "pen": "🖊️", "ruler": "📏",
-                "paperclip": "📎", "stamp": "📮",
-                "inbox": "📥", "outbox": "📤",
-                "earth": "🌏", "moon": "🌙", "sun": "☀️",
-                "rainbow": "🌈", "snowflake": "❄️",
-                "wave": "🌊", "anchor": "⚓",
-                "airplane": "✈️", "car": "🚗", "bicycle": "🚲",
-                "map": "🗺️", "compass": "🧭",
-                "flag": "🚩", "satellite": "🛰️",
-                "telescope": "🔭", "microscope": "🔬",
-                "money": "💰", "gem": "💎",
-                "love_letter": "💌",
-                "warning": "⚠️", "no_entry": "⛔",
-                "busy": "🉐", "free": "🆓", "secret": "🤫",
-                "goal": "🎯", "puzzle": "🧩",
-                "music": "🎵", "headphones": "🎧",
-                "sound": "🔊", "mute": "🔇",
-                "eye": "👁️", "ear": "👂", "nose": "👃",
-                "footprints": "👣",
-                "bone": "🦴", "microbe": "🦠",
-                "pill": "💊", "syringe": "💉",
-                "thermometer": "🌡️",
-                "magnet": "🧲", "gear": "⚙️",
-                "atom": "⚛️", "dna": "🧬",
-                "biohazard": "☣️", "radioactive": "☢️",
-                "bio": "🌱",
-                "four_leaf": "🍀", "maple": "🍁",
-                "cherry": "🌸", "tulip": "🌷",
-                "rose": "🌹", "hibiscus": "🌺",
-                "shell": "🐚", "feather": "🪶",
-                "sparkle": "✨", "diamond": "💠",
-                "fleur": "⚜️", "comet": "☄️",
-            }
-            emoji = emoji_map.get(elem)
-            if emoji:
-                draw.text((cx - 50, cy - 60), emoji, fill=(255, 255, 255, 255), font=get_font(80))
+            emoji_elements.append(elem)
+    # 未匹配 elem_fns 的 key 横向排列为 emoji（最多4个）
+    if emoji_elements:
+        emoji_fonts = {
+            "ai大脑": "🧠", "ai计算": "🧠", "神经网络": "🧠",
+            "终端窗口": "💻", "芯片": "🤖",
+            "闪电": "⚡", "网络节点": "🔗", "按钮": "🔘",
+            "画布": "📐", "光晕": "🔦",
+            "机器人": "🤖", "ai芯片": "🤖",
+        }
+        max_emoji = 4
+        shown = emoji_elements[:max_emoji]
+        total_w = len(shown) * 120
+        start_x = cx - total_w // 2
+        for i, elem in enumerate(shown):
+            emoji = emoji_fonts.get(elem, elem)
+            ex = start_x + i * 120
+            draw.text((ex, cy - 80), emoji, fill=(255, 255, 255, 255), font=get_font(80))
 
     # 渲染底部文案
     font = get_font(60)

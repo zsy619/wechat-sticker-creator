@@ -89,7 +89,9 @@ def generate_thumbnail(input_dir, output_path, size):
         return False
 
     thumb_w = w
-    thumb_h = h // len(files)
+    # 安全整数除法：防止 len(files) 过大/过小导致问题
+    count = max(1, len(files))
+    thumb_h = h // count  # floor除法，超出部分截断而非崩溃
     canvas = Image.new('RGBA', (w, h), (0, 0, 0, 0))
 
     for i, fname in enumerate(files):

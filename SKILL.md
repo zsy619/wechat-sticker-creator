@@ -1,7 +1,7 @@
 ---
 name: wechat-sticker-skill
 description: Create WeChat emoji sticker series from any input (URL, topic, or content). Use when user asks to "做微信贴图", "微信贴图", "创建微信贴图包", "WeChat stickers", "微信emoji", "根据内容生成贴图", "做一套贴图", "生成贴图". Triggers on sticker creation, emoji design, reaction images, or any WeChat sticker-related request.
-version: 4.3.1
+version: 4.3.5
 tags: ["wechat", "sticker", "emoji", "表情包", "贴图", "微信贴图", "remotion", "frame-generation"]
 metadata:
   author: zhushuyan
@@ -58,14 +58,16 @@ wechat-stickers/                    ← 技能根目录
 │       └── base.css                      ← 基础样式
 │
 ├── scripts/
+│   ├── _vocab.py                         ← 共享词汇表模块（VOCABULARY + THEMES）[共享数据源]
 │   ├── run_full_pipeline.py              ← 完整工作流串联入口（一次性执行全流程）
 │   ├── generate_content_analysis.py      ← 节点①：内容聚合分析（URL/主题/文本 → content-analysis.md）
 │   ├── generate_manifest.py               ← 节点②：manifest 生成（含 vocabulary 校验）
-│   ├── generate_prompts.py                 ← 节点③：prompts 文件生成（含 vocabulary 校验）
-│   ├── generate_frames.py                 ← 节点④：图片生成（AI → Remotion → PIL 三段式降级）
-│   ├── pil_fallback.py                    ← PIL 兜底生成器（独立脚本，亦可单独使用）
-│   ├── pack_stickers.py                   ← 节点⑤：打包 ZIP + 生成封面/缩略图
-│   └── qa_check.py                        ← 节点⑥：QA 自动化检查（尺寸/格式/词汇表）
+│   ├── generate_prompts.py               ← 节点③：prompts 文件生成（含 vocabulary 校验）
+│   ├── generate_frames.py                ← 节点④：图片生成（AI → Remotion → PIL 三段式降级）
+│   ├── pil_fallback.py                   ← PIL 兜底生成器（独立脚本，亦可单独使用）
+│   ├── pack_stickers.py                  ← 节点⑤：打包 ZIP + 生成封面/缩略图
+│   ├── qa_check.py                       ← 节点⑥：QA 自动化检查（尺寸/格式/词汇表）
+│   └── generate_tags.py                  ← 标签生成（manifest/prompts → tags.md）
 │
 └── docs/                                ← 规范文档
     ├── workflow.md                       ← 核心工作流
