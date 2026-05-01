@@ -71,3 +71,39 @@ img.resize((200, 267)).save('thumbnail.png')
 | 平台标签 | #微信表情 #微信贴图 #WeChatStickers |
 | 情感标签 | #可爱 #搞笑 #治愈 #社恐自救 #打工人 #摸鱼 |
 | 主题标签 | 根据内容自动提取（如 #AI #编程 #职场 #生活） |
+
+---
+
+## 自动化打包
+
+使用 `scripts/pack_stickers.py` 自动打包并生成封面/缩略图：
+
+```bash
+# 打包 + 生成封面 + 生成缩略图
+python3 scripts/pack_stickers.py \
+  --input assets-cyberpunk/ \
+  --output stickers-cyberpunk.zip \
+  --cover 900x383 \
+  --thumbnail 200x267
+
+# 仅打包（不生成封面/缩略图）
+python3 scripts/pack_stickers.py \
+  --input assets-cyberpunk/ \
+  --output stickers-cyberpunk.zip
+```
+
+**输出内容**：
+- `stickers-cyberpunk.zip` — 所有贴图 PNG 打包
+- `cover-900x383.png` — 公众号封面（可选）
+- `thumbnail-200x267.png` — 文末缩略图（可选）
+- `tags.md` — 标签推荐文档（可选）
+
+### 标签生成
+
+配合 `scripts/generate_tags.py` 生成标签推荐：
+
+```bash
+python3 scripts/generate_tags.py \
+  --input sticker-manifest.md \
+  --output tags.md
+```

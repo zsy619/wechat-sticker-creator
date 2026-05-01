@@ -1,7 +1,7 @@
 ---
 name: wechat-sticker-skill
 description: Create WeChat emoji sticker series from any input (URL, topic, or content). Use when user asks to "做微信贴图", "微信贴图", "创建微信贴图包", "WeChat stickers", "微信emoji", "根据内容生成贴图", "做一套贴图", "生成贴图". Triggers on sticker creation, emoji design, reaction images, or any WeChat sticker-related request.
-version: 4.3.0
+version: 4.3.1
 tags: ["wechat", "sticker", "emoji", "表情包", "贴图", "微信贴图", "remotion", "frame-generation"]
 metadata:
   author: zhushuyan
@@ -58,8 +58,14 @@ wechat-stickers/                    ← 技能根目录
 │       └── base.css                      ← 基础样式
 │
 ├── scripts/
-│   ├── generate_frames.py                ← 主脚本（读取 remotion/template/ 生成项目）
-│   └── pil_fallback.py                   ← PIL 兜底生成器
+│   ├── run_full_pipeline.py              ← 完整工作流串联入口（一次性执行全流程）
+│   ├── generate_content_analysis.py      ← 节点①：内容聚合分析（URL/主题/文本 → content-analysis.md）
+│   ├── generate_manifest.py               ← 节点②：manifest 生成（含 vocabulary 校验）
+│   ├── generate_prompts.py                 ← 节点③：prompts 文件生成（含 vocabulary 校验）
+│   ├── generate_frames.py                 ← 节点④：图片生成（AI → Remotion → PIL 三段式降级）
+│   ├── pil_fallback.py                    ← PIL 兜底生成器（独立脚本，亦可单独使用）
+│   ├── pack_stickers.py                   ← 节点⑤：打包 ZIP + 生成封面/缩略图
+│   └── qa_check.py                        ← 节点⑥：QA 自动化检查（尺寸/格式/词汇表）
 │
 └── docs/                                ← 规范文档
     ├── workflow.md                       ← 核心工作流
@@ -80,18 +86,61 @@ wechat-stickers/                    ← 技能根目录
 ## 快速开始
 
 ```bash
-# 完整生成流程（自动三段式降级）
-python3 scripts/generate_frames.py \
-  --input prompts/ \
-  --output assets/ \
+# ── 完整工作流（自动化串联）──────────────────────────────
+# 一次性完成：内容聚合 → manifest → prompts → 图片生成
+python3 scripts/run_full_pipeline.py \
+  --input "AI编程助手" \
+  --output wechat-stickers/ai-coding-assistant \
   --theme cyberpunk
 
-# 仅 PIL 兜底（调试用）
+# ── 分步执行（调试用）───────────────────────────────────
+# 步骤1：内容聚合分析
+python3 scripts/generate_content_analysis.py \
+  --input "AI编程助手" \
+  --output wechat-stickers/ai-coding-assistant/
+
+# 步骤2：生成 manifest
+python3 scripts/generate_manifest.py \
+  --input wechat-stickers/ai-coding-assistant/content-analysis.md \
+  --output wechat-stickers/ai-coding-assistant/sticker-manifest.md
+
+# 步骤3：生成 prompts
+python3 scripts/generate_prompts.py \
+  --input wechat-stickers/ai-coding-assistant/sticker-manifest.md \
+  --output wechat-stickers/ai-coding-assistant/prompts/
+
+# 步骤4：图片生成（三段式降级）
+python3 scripts/generate_frames.py \
+  --input wechat-stickers/ai-coding-assistant/prompts/ \
+  --output wechat-stickers/ai-coding-assistant/assets-cyberpunk/ \
+  --theme cyberpunk
+
+# 步骤5：打包 + QA 检查
+python3 scripts/pack_stickers.py \
+  --input wechat-stickers/ai-coding-assistant/assets-cyberpunk/ \
+  --output wechat-stickers/ai-coding-assistant/stickers.zip
+
+python3 scripts/qa_check.py \
+  --input wechat-stickers/ai-coding-assistant/assets-cyberpunk/ \
+  --vocabulary docs/prompts-format.md
+
+# ── 单独使用 PIL 兜底（完全离线）──────────────────────
 python3 scripts/pil_fallback.py \
   --input prompts/ \
   --output assets-pil/ \
   --theme cyberpunk
 ```
+
+### --mode 参数
+
+`generate_frames.py` 支持强制指定生成模式：
+
+| 值 | 行为 |
+|----|------|
+| `auto`（默认） | AI → Remotion → PIL 自动降级 |
+| `ai` | 仅 AI 生成，失败则整张贴图失败 |
+| `remotion` | 仅 Remotion 生成，失败则降级 PIL |
+| `pil` | 仅 PIL 生成（最稳定，完全离线） |
 
 ## 核心概念
 

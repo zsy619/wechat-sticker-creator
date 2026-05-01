@@ -1,5 +1,58 @@
 # Changelog - wechat-sticker-skill
 
+## v4.3.1 (2026-05-01) - 完整工作流串联 + 7个新脚本
+
+### 新增脚本（节点间自动化）
+
+**T-TOP.1 新建**：
+- 新建 `scripts/run_full_pipeline.py`：顶层串联入口，一次性执行完整工作流（内容聚合 → manifest → prompts → 图片生成 → 打包 → QA）
+- 支持 `--mode` 参数：auto / full / analysis / manifest / prompts / frames / qa / pack
+
+**T-1.1 新建**：
+- 新建 `scripts/generate_content_analysis.py`：内容聚合分析脚本，支持 URL / 主题词 / 纯文本三种输入类型，自动联网搜索 + LLM 聚合，输出 `content-analysis.md`
+
+**T-2.1 新建**：
+- 新建 `scripts/generate_manifest.py`：贴图设计 manifest 生成脚本，内置 vocabulary 校验（80+ key），输出 `sticker-manifest.md`
+
+**T-3.1 新建**：
+- 新建 `scripts/generate_prompts.py`：从 manifest 生成 prompts 文件脚本，支持 vocabulary 校验 + theme 配色自动填充，输出 `prompts/{num}-{name}.md`
+
+**T-5.1 新建**：
+- 新建 `scripts/pack_stickers.py`：ZIP 打包 + 封面图生成（公众号封面 900x383）+ 缩略图生成（200x267），支持 PIL 拼贴
+
+**T-6.1 新建**：
+- 新建 `scripts/qa_check.py`：QA 自动化检查脚本，支持尺寸校验（1080×1440）、格式校验（PNG/GIF）、文件名格式校验、词汇表合规性校验
+
+### Bug 修复
+
+**T-4.2 修复**：
+- 修复 `generate_frames.py` line 414：`emoji_map.get(e, "")` 改为 `emoji_map[e]` + 过滤不存在 key，消除空字符串渲染 bug
+
+**T-4.3 修复**：
+- 统一 `SKILL.md` 与 `generate_frames.py` 的 `--mode` 参数说明，SKILL.md 新增完整工作流命令序列
+
+### 文档修复
+
+**DOC-1 修复**：
+- 修复 `docs/content-format.md`：`visual_elements` 词汇表改为英文 key（与 prompts-format.md 一致），修正表格双竖线格式
+
+**DOC-2 补充**：
+- 补充 `docs/prompts-format.md`：新增「manifest 验证规则」节和「从 manifest 生成 prompts」说明节
+
+**DOC-3 补充**：
+- 补充 `docs/output.md`：新增「自动化打包」节（含 `pack_stickers.py` 用法）和「标签生成」节（含 `generate_tags.py` 用法）
+
+**DOC-4 补充**：
+- 补充 `docs/qa.md`：新增自动化 QA 流程（`qa_check.py`）+ 手动复核清单分离，结构化为表格
+
+### SKILL.md 更新
+
+- scripts 目录列表从 2 个扩充至 8 个（所有新增脚本已列入）
+- 版本号升至 v4.3.1
+- 快速开始新增完整 pipeline 命令序列
+
+---
+
 ## v4.3.0 (2026-05-01) - 三段式生成器全面完善
 
 ### generate_frames.py 核心修复

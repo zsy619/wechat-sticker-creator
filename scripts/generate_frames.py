@@ -411,7 +411,7 @@ def _get_or_create_remotion_project(project_dir, stickers, theme_key):
     # 构建多 Sequence JSX
     sequences_jsx = ""
     for i, (name, copy, v_elems) in enumerate(stickers):
-        emojis = [emoji_map.get(e, "") for e in v_elems if emoji_map.get(e)]
+        emojis = [emoji_map[e] for e in v_elems if e in emoji_map]
         if not emojis: emojis = ["📝"]
         copy_escaped = copy.replace("'", "\\'").replace("`", "\\`").replace("$", "\\$").replace("{", "\\{").replace("}", "\\}")
         emoji_json = json.dumps(emojis, ensure_ascii=False)

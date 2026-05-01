@@ -146,31 +146,39 @@ aspect_ratio: "3:4"
 
 ### visual_elements 词汇表
 
+**所有 key 必须使用英文**，中文名为辅助注释。详见 [prompts-format.md 标准词汇表](../prompts-format.md)。
+
 **FOCUS 元素**（适合居中放大）：
 
 | 关键词 | 说明 |
 |--------|------|
-| `brain` / `ai大脑` | AI大脑图标 |
-| `ai计算` | AI计算 |
-| `神经网络` / `neural_network` | 神经网络节点图 |
-| `terminal` / `终端窗口` | 终端窗口 |
-| `math_canvas` / `canvas` / `画布` | 数学画布 |
-| `equals_sign` / `等号` | 等号 |
-| `command_k` / `⌘k` | ⌘K 按键 |
-| `lightning` / `闪电` | 闪电符号 |
-| `ai_chip` / `芯片` | AI芯片 |
+| `brain` | AI 大脑 / 神经网络 |
+| `neural_network` | 神经网络节点图 |
+| `terminal` | 终端窗口 |
+| `math_canvas` | 数学画布 |
+| `equals_sign` | 等号（全角，避免 JSX 冲突） |
+| `command_k` | ⌘K 按键 |
+| `lightning` | 闪电符号 |
+| `ai_chip` | AI 芯片 |
+| `code` | 代码窗口 |
+| `algorithm` | 算法符号 |
+| `function` | 函数符号 ƒ |
+| `variable` | 变量符号 x |
 
 **ACCENT 元素**（适合小尺寸散布）：
 
 | 关键词 | 说明 |
 |--------|------|
-| `heart` / `红心` | 红心 |
-| `question_mark` / `问号` | 问号气泡 |
-| `checkmark` / `对勾` | 对勾 |
-| `spotlight` / `光晕` | 聚光灯/光晕 |
-| `network_node` / `节点` | 节点 |
-| `eraser` / `橡皮擦` | 橡皮擦 |
-| `button` / `按钮` | 按钮 |
+| `heart` | 红心 |
+| `question_mark` | 问号气泡 |
+| `checkmark` | 对勾 |
+| `spotlight` | 聚光灯/光晕 |
+| `network_node` | 网络节点（link） |
+| `eraser` | 橡皮擦 |
+| `button` | 按钮 |
+| `lightning` | 闪电 |
+| `star` | 星星 |
+| `trophy` | 奖杯 |
 
 ### style_keyword 主题映射
 

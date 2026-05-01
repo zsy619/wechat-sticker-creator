@@ -517,3 +517,76 @@ AI算出答案是八没错
 | prompts × N | N | N | N |
 | **总计** | **N** | **N** | **N** |
 
+---
+
+## 九、从 manifest 生成 prompts
+
+每张贴图的 `prompts/*.md` 由 `scripts/generate_prompts.py` 基于 `sticker-manifest.md` 自动生成。
+
+**前置条件**：
+- 已存在 `sticker-manifest.md`（由 `scripts/generate_manifest.py` 生成）
+- manifest 中 `visual_elements` 字段使用英文 key
+
+**生成命令**：
+```bash
+python3 scripts/generate_prompts.py \
+  --input sticker-manifest.md \
+  --output prompts/
+```
+
+**自动填充内容**：
+- `name`：继承 manifest 的贴图名称
+- `copy`：继承 manifest 的核心文案
+- `visual_elements`：直接复制 manifest 的英文 key 列表
+- `style_keyword`：继承 manifest 的风格词
+- `theme`：继承 manifest 的主题键
+- 正文：自动基于 theme 配色填充"风格要求"节
+
+---
+
+## 十、visual_elements 词汇表校验规则
+
+所有 `visual_elements` 中的 key **必须**在以下词汇表范围内。校验由 `scripts/qa_check.py` 自动执行。
+
+**完整词汇表**（prompts-format.md 第五节）共 80+ 条，分类：
+
+| 分类 | 代表 key |
+|------|---------|
+| 核心 AI/技术 | `brain`, `neural_network`, `terminal`, `lightning`, `ai_chip`, `spotlight`, `network_node`, `button`, `code`, `algorithm`, `function`, `variable`, `debug`, `deploy` |
+| 情感/反应 | `heart`, `thumbs_up`, `clap`, `pray`, `muscle`, `thinking`, `eyes`, `trophy`, `medal`, `crown`, `star`, `fire`, `hundred`, `laugh`, `cry`, `angry`, `cool`, `shy`, `sleeping` |
+| 物品/工具 | `rocket`, `alarm`, `bell`, `megaphone`, `wrench`, `hammer`, `scissors`, `pencil`, `book`, `lightbulb`, `envelope`, `gift`, `tada`, `balloon`, `confetti` |
+| 食物/饮料 | `coffee`, `tea`, `beer`, `cocktail`, `wine`, `pizza`, `rice`, `fruit`, `cake`, `cookie`, `bread` |
+| 办公/效率 | `phone`, `camera`, `clipboard`, `chart`, `calendar`, `key`, `lock`, `folder`, `file`, `email`, `call`, `microphone`, `video`, `tv`, `clock`, `hourglass`, `pen`, `ruler`, `paperclip`, `stamp`, `inbox`, `outbox` |
+| 自然/科学 | `earth`, `moon`, `sun`, `rainbow`, `snowflake`, `wave`, `anchor`, `airplane`, `car`, `bicycle`, `map`, `compass`, `flag`, `satellite`, `telescope`, `microscope` |
+| 心情/状态 | `money`, `gem`, `love_letter`, `warning`, `no_entry`, `busy`, `free`, `secret` |
+| 创意/兴趣 | `goal`, `puzzle`, `music`, `headphones`, `sound`, `mute`, `eye`, `ear`, `nose`, `footprints` |
+| 健康/医疗 | `bone`, `microbe`, `pill`, `syringe`, `thermometer` |
+| 工业/科学符号 | `magnet`, `gear`, `atom`, `dna`, `biohazard`, `radioactive`, `bio` |
+| 植物/自然 | `four_leaf`, `maple`, `cherry`, `tulip`, `rose`, `hibiscus`, `shell`, `feather` |
+| 装饰/特殊 | `sparkle`, `diamond`, `fleur`, `comet` |
+
+**非 emoji 绘制元素**（对应 PIL elem_fns 特殊绘制逻辑）：
+
+| key | PIL 绘制方式 | emoji 映射 |
+|-----|-------------|-----------|
+| `brain` | 椭圆形光晕 | 🧠 |
+| `neural_network` | 网格节点阵列 | 🧠 |
+| `terminal` | 深色圆角矩形 | 💻 |
+| `math_canvas` | 深色矩形 | 📐 |
+| `ai_chip` | 方形芯片轮廓 | 🤖 |
+| `spotlight` | 多层椭圆光晕 | 🔦 |
+| `network_node` | 网格节点阵列 | 🔗 |
+| `button` | 圆角矩形按钮 | 🔘 |
+| `code` | 代码窗口+注释行 | 💻 |
+| `algorithm` | 流程图方块+箭头 | 🔣 |
+| `function` | ƒ(x)= 符号 | ƒ |
+| `variable` | x = ??? 三连问号 | x |
+| `bio` | DNA 双螺旋 | 🌱 |
+| `secret` | \*\*\* + CLASSIFIED 印章 | \*\*\* |
+| `lightning` | emoji 渲染 | ⚡ |
+| `heart` | emoji 渲染 | ❤ |
+| `equals_sign` | 等号文本 | ＝ |
+| `question_mark` | 问号文本 | ？ |
+| `eraser` | emoji 渲染 | 🧹 |
+| `checkmark` | 对勾文本 | ✓ |
+
