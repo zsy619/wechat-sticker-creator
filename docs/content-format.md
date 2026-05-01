@@ -1,330 +1,299 @@
-## 项目目录结构
+# 内容格式文档
 
-```
-wechat-stickers/{topic-slug}/
-├── project.yaml                    # 项目元数据
-├── content-analysis.md             # 内容聚合分析
-├── sticker-manifest.md             # 贴图设计清单
-├── copy.md                         # 推广文案文档
-├── token-stats.md                  # Token输入输出统计
-├── prompts/                        # 贴图提示词目录（含专属视觉规则）
-│   ├── 01-{sticker-name}.md       # 贴图1提示词（含visual_elements）
-│   ├── 02-{sticker-name}.md        # 贴图2提示词
-│   └── ...                         # 每张贴图一个文件
-├── assets/                         # 默认风格贴图（--theme默认cyberpunk）
-│   └── *.png                       # 1080×1440px PNG
-├── assets-{theme1}/                # 风格1贴图（如assets-kawaii）
-├── assets-{theme2}/                # 风格2贴图（如assets-neon）
-└── output/                         # 最终输出目录
-    └── stickers-{topic-slug}.zip   # ZIP打包文件（可选）
-```
+本文档定义贴图项目中各类格式规范。
 
-> **注意**: 多风格生成时，每种风格单独存放于 `assets-{theme}/` 目录，避免覆盖。
+---
 
 ## 内容聚合分析 (content-analysis.md)
 
-完成联网搜索后，生成内容聚合分析文档：
+项目创建后，首先进行内容聚合分析，生成 `content-analysis.md`。
 
-```markdown
-# 内容聚合分析
+### 输入来源
 
-## 输入来源
-- **类型**: [URL链接/主题词/内容文本]
-- **原始输入**: <用户输入内容>
-- **搜索关键词**: <构建的搜索关键词>
+- **URL链接**：使用 `baoyu-url-to-markdown` 提取页面内容
+- **主题词**：使用 `WebSearch` 联网搜索相关内容
+- **内容文本**：直接使用输入内容
 
-## 内容获取
-- **主要来源**: <URL内容或原始内容的核心摘要>
-- **相关搜索**: <联网搜索获取的相关内容摘要>
+### 内容获取
 
-## 核心主题
-- **主题**: <提取的主要主题>
-- **子主题**: <2-4个相关子主题>
+```bash
+# URL 链接
+baoyu-url-to-markdown --url "https://github.com/ayushpai/AI-Math-Notes"
 
-## 关键概念
-| 概念 | 描述 | 应用场景 |
-|-----|------|---------|
-| 概念1 | <详细描述> | <使用场景> |
-| 概念2 | <详细描述> | <使用场景> |
-
-## 情感基调
-- **主基调**: <funny/cute/professional/sarcastic/wholesome/emotional>
-- **强度**: <高/中/低>
-- **目标受众**: <目标用户群体描述>
-
-## 使用场景
-1. <场景1>: <具体描述>
-2. <场景2>: <具体描述>
-3. <场景3>: <具体描述>
-
-## 热点趋势
-- <当前热点1>
-- <当前热点2>
-- <流行语/梗>
-
-## 贴图设计方向
-基于以上分析，建议的贴图设计方向：
-- <设计风格建议>
-- <色彩方案建议>
-- <文字内容建议>
+# 主题词搜索
+WebSearch "AI Math Notes Apple WWDC 2024"
 ```
+
+### 核心主题
+
+从内容中提取核心主题，形成 1-2 句话概括。
+
+### 关键概念
+
+列出 5-10 个与主题相关的关键概念。
+
+### 情感基调
+
+- **轻松幽默**：适合娱乐类贴图
+- **专业干练**：适合工具/科技类贴图
+- **温暖治愈**：适合生活/情感类贴图
+- **酷炫潮流**：适合时尚/科技类贴图
+
+### 使用场景
+
+列出 3-5 个典型使用场景。
+
+### 热点趋势
+
+通过搜索了解当前热点和趋势。
+
+### 贴图设计方向
+
+根据以上分析，给出贴图设计的整体方向建议。
+
+---
 
 ## 贴图设计清单 (sticker-manifest.md)
 
+每套贴图设计 6 张（最常见数量），覆盖不同使用场景：
+
 ### 贴图类型定义
 
-| 类型          | 描述     | 典型示例            |
-| ----------- | ------ | --------------- |
-| `reaction`  | 快速反应表情 | "好的"、"收到"、"赞"   |
-| `emotion`   | 情感表达   | 开心、悲伤、惊讶、生气     |
-| `situation` | 场景化设计  | 加班、摸鱼、周末、咖啡时间   |
-| `text`      | 文字表情   | "摸鱼"、"太强了"、"绝了" |
-| `mascot`    | 角色形象   | 品牌IP、吉祥物反应      |
+| 序号 | 名称 | 使用场景 |
+|------|------|---------|
+| 01 | {场景1} | 开场/引入 |
+| 02 | {场景2} | 核心功能展示 |
+| 03 | {场景3} | 操作/使用中 |
+| 04 | {场景4} | 结果/完成 |
+| 05 | {场景5} | 意外/趣味 |
+| 06 | {场景6} | 收藏/标志 |
 
 ### Manifest 文件格式（v3.0）
 
-```markdown
----
-project: {topic-slug}
-sticker_count: {N}
-sticker_names: ["名称1", "名称2", ...]  # 对应prompts/下的name字段
-them es: ["cyberpunk", "kawaii"]     # 要生成的主题风格
-emotional_tone: {tone}
-target_audience: {audience}
-created: {YYYY-MM-DD HH:mm:ss}
----
-
+```yaml
 # 贴图设计清单
 
 ## 贴图1: {sticker-name}
-- **类型**: {type}
-- **中文标签**: {中文标签}
-- **描述**: {贴图展示内容详细描述，对应prompts中的visual_elements}
-- **使用场景**: {何时发送此贴图}
-- **Prompt文件**: prompts/01-{sticker-name}.md（内含copy、visual_elements）
+
+- **序号**: 01
+- **名称**: {sticker-name}
+- **使用场景**: {场景描述}
+- **核心文案**: {copy}
+- **视觉元素**: [元素1, 元素2, 元素3]
+- **风格**: {style_keyword}
 
 ## 贴图2: {sticker-name}
-... (至少3张，最多12张)
+
+...
 
 ## 标签汇总
-- 平台标签: #微信表情 #微信贴图 #WeChatStickers
-- 情感标签: #可爱 #搞笑 #治愈 #社恐自救 #打工人
-- 主题标签: <根据内容生成>
-- 风格标签: #表情包 #卡通 #每日壁纸 #头像
-```
 
-> **重要**: v3.0 中文案（copy）和视觉元素（visual_elements）不再单独写入 Manifest，而是写入对应的 `prompts/*.md` frontmatter 中。Manifest 只记录设计规划，具体内容由 Prompt 文件承载。
+- 平台标签: #微信表情 #微信贴图 #WeChatStickers
+- 情感标签: {根据内容确定}
+- 主题标签: {根据内容确定}
+```
 
 ### 贴图命名规则
 
-- 使用 2-4 个汉字或英文单词
-- 文件名使用 kebab-case: `zhuang-bi`, `moyu-shenqi`
-- 中文友好命名示例: `摸鱼中`、`太强了`、`老板来了`
-- 避免使用特殊字符和过长的名称
+- 格式：`{num}-{name}.md`，如 `01-画布手写.md`
+- 名称使用中文，简洁明了
+- 序号固定2位数字
 
-## Token统计文档 (token-stats.md)
-
-生成项目后，记录本次使用的 Token 消耗情况（联网搜索消耗可使用平台计费工具估算）：
-
-```markdown
----
-project: {topic-slug}
-created: {YYYY-MM-DD HH:mm:ss}
 ---
 
-# Token 输入输出统计
+## 提示词生成 (prompts/*.md)
 
-## 项目信息
-- **主题**: {topic}
-- **贴图数量**: {N} 张
-- **生成风格**: {style}
+每张贴图对应一个 `prompts/{num}-{name}.md` 文件：
 
-## Token 消耗统计
+### Prompt 格式（v3.0）
 
-| 阶段 | 输入Token | 输出Token | 备注 |
-|-----|----------|----------|------|
-| 内容聚合分析 | - | - | 联网搜索消耗（估算） |
-| 贴图设计 | - | - | Manifest生成 |
-| 提示词生成 | - | - | prompts生成 |
-| **总计** | **{total_input}** | **{total_output}** | |
+```yaml
+---
+name: 画布手写
+copy: 随手一画，AI帮你算
+visual_elements: [math_canvas, equals_sign, question_mark]
+style_keyword: [cyberpunk, 赛博朋克, tech-modern]
+theme: cyberpunk
+aspect_ratio: "3:4"
+---
 
-## 优化建议
+## 视觉设计规则
+- 中心：数学画布，深色背景
+- 等号 + 问号气泡，等待动画
+- 底部：核心文案居中显示
 
-- 合并相似请求减少 API 调用
-- 复用提示词模板降低输入 Token
-- 批量处理提高效率
-```
+## 风格要求
+- 主色：青色 (#00FFFF)
+- 背景：深空黑 (#0D0D1A)
+- 光效：霓虹发光
 
-## 文案文档 (copy.md)
-
-生成项目后，为所有贴图生成统一的推广文案文档：
-
-### copy.md 格式要求
-
-```markdown
-## {贴图名称}
-### 内容
-{推广文案内容，20-50字左右，适合社交媒体发布}
-
-### 标签
-#标签1 #标签2 #标签3 #标签4 #标签5
+## 文字展示
+- 位置：画布底部居中
+- 字体：PingFang SC, 110px
+- 颜色：白色
 ```
 
 ### 字段说明
 
-| 字段       | 要求     | 说明                |
-| -------- | ------ | ----------------- |
-| **贴图名称** | 2-4个汉字 | 作为标题，如"摸鱼中"、"太强了" |
-| **内容**   | 20-50字 | 推广文案，适合社交媒体传播     |
-| **标签**   | 至少5个   | 分类：平台、情感、主题、风格、用途 |
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `name` | ✅ | 贴图中英文标识 |
+| `copy` | ✅ | 核心文案（≥10字） |
+| `visual_elements` | ✅ | 视觉元素列表 |
+| `style_keyword` | ✅ | 风格关键词 |
+| `theme` | ✅ | 主题键 |
+| `aspect_ratio` | ✅ | 宽高比（3:4） |
 
-### 文案风格要求
+### visual_elements 词汇表
 
-- **简短有力**：突出贴图特色，15-30字为佳
-- **社交友好**：适合朋友圈、微博、小红书传播
-- **引发共鸣**：触达目标用户痛点或兴趣
-- **行动导向**：可包含引导互动的话术
+**FOCUS 元素**（适合居中放大）：
 
-### 标签分类要求
+| 关键词 | 说明 |
+|--------|------|
+| `brain` / `ai大脑` | AI大脑图标 |
+| `ai计算` | AI计算 |
+| `神经网络` / `neural_network` | 神经网络节点图 |
+| `terminal` / `终端窗口` | 终端窗口 |
+| `math_canvas` / `canvas` / `画布` | 数学画布 |
+| `equals_sign` / `等号` | 等号 |
+| `command_k` / `⌘k` | ⌘K 按键 |
+| `lightning` / `闪电` | 闪电符号 |
+| `ai_chip` / `芯片` | AI芯片 |
 
-每张贴图至少 5 个标签，分类如下：
+**ACCENT 元素**（适合小尺寸散布）：
 
-| 类别   | 说明     | 示例           |
-| ---- | ------ | ------------ |
-| 平台标签 | 标注平台属性 | #微信表情 #微信贴图  |
-| 情感标签 | 表达情感类型 | #可爱 #搞笑 #治愈  |
-| 主题标签 | 贴合内容主题 | #摸鱼 #打工人 #职场 |
-| 风格标签 | 描述视觉风格 | #赛博朋克 #卡通    |
-| 用途标签 | 使用场景   | #斗图 #表情包 #头像 |
+| 关键词 | 说明 |
+|--------|------|
+| `heart` / `红心` | 红心 |
+| `question_mark` / `问号` | 问号气泡 |
+| `checkmark` / `对勾` | 对勾 |
+| `spotlight` / `光晕` | 聚光灯/光晕 |
+| `network_node` / `节点` | 节点 |
+| `eraser` / `橡皮擦` | 橡皮擦 |
+| `button` / `按钮` | 按钮 |
 
-### 文案生成示例
+### style_keyword 主题映射
 
-```markdown
-## 摸鱼中
-### 内容
-打工人必备摸鱼指南！这套表情包含超实用的摸鱼技巧，让你在职场中游刃有余，享受带薪摸鱼的快乐！
-
-### 标签
-#微信表情 #摸鱼神器 #打工人必备 #职场生存 #摸鱼技巧 #赛博朋克 #表情包 #斗图
+```tsx
+const THEMES = {
+  cyberpunk:  { primary: '#00FFFF', secondary: '#FF00FF', bg: '#0D0D1A', text: '#FFFFFF', accent: '#00FF88' },
+  kawaii:     { primary: '#FF69B4', secondary: '#FFB6C1', bg: '#FFF0F5', text: '#4A4A4A', accent: '#FF1493' },
+  neon:       { primary: '#FF00FF', secondary: '#00FFFF', bg: '#1A0033', text: '#FFFFFF', accent: '#FF69B4' },
+  retro:      { primary: '#FFD700', secondary: '#FF6B35', bg: '#2D1B00', text: '#FFFFFF', accent: '#FF4500' },
+  'hand-drawn': { primary: '#8B4513', secondary: '#D2691E', bg: '#FFF8DC', text: '#4A4A4A', accent: '#CD853F' },
+  minimal:    { primary: '#212529', secondary: '#495057', bg: '#F8F9FA', text: '#212529', accent: '#6C757D' },
+  meme:       { primary: '#FF4500', secondary: '#FFD700', bg: '#1A1A1A', text: '#FFFFFF', accent: '#FF6347' },
+};
 ```
 
-### 输出要求
+### 解析脚本（v4.1+）
 
-- **文件名**: `copy.md`
-- **位置**: 项目根目录
-- **格式**: Markdown
-- **编码**: UTF-8
+> ⚠️ **注意**：原 `eval()` 解析无法处理中文词（如 `[黑色画布, 数学公式]`），已被 `_parse_list()` 替代。
 
-## 提示词生成 (prompts/*.md)
+```python
+def _parse_list(s):
+    """解析逗号分隔的非引号列表：[a, b, c] → ['a','b','c']"""
+    s = s.strip()
+    if s.startswith('[') and s.endswith(']'):
+        s = s[1:-1]
+    return [x.strip() for x in s.split(',') if x.strip()]
 
-每张贴图生成一个独立的提示词文件，**每个贴图有专属视觉元素**（不只是模板文字）。
-
-### Prompt 格式（v3.0）
-
-```markdown
----
-name: {sticker-name}
-type: {type}
-copy: {核心文案，≥10字，将完整展示在贴图底部}
-style_keyword: [关键词1, 关键词2, 关键词3]
-visual_elements: [元素1, 元素2, 元素3]
-aspect_ratio: "3:4"
----
-
-# 贴图提示词: {sticker-name}
-
-## 核心文案（必须展示在贴图中）
-{copy_text}（完整文案，≥10字，展示在贴图底部）
-
-## 视觉设计规则
-- **主体**: <专属视觉主体描述，如「代码补全下拉框」「⌘K 按键」等>
-- **元素**: <每个视觉元素的详细描述>
-- **动效**: <可选的动态描述>
-
-## 风格要求
-- **风格**: <由 --theme 参数决定: cyberpunk/kawaii/hand-drawn/retro/neon/minimal/meme>
-- **配色**: <由主题配色方案决定>
-- **主视觉**: <视觉占画面比例（如55%），文字框占底部40%>
-- **尺寸**: 1080×1440px（微信贴图标准）
-- **格式**: PNG（透明或主题相关背景）
-
-## 文字展示
-- **位置**: 画布底部，居中
-- **左右边距**: 30px
-- **距底边**: 30px
-- **支持**: 多行换行
+def parse_prompt_file(path):
+    with open(path) as f:
+        content = f.read()
+    front = {}
+    in_front = False
+    for line in content.split('\n'):
+        stripped = line.strip()
+        if stripped == '---':
+            if not in_front: in_front = True  # 跳过开头的 ---
+            else: break                         # 遇到第二个 --- → 结束
+            continue
+        if in_front and ':' in line:
+            k, v = line.split(':', 1)
+            front[k.strip()] = v.strip().strip('"').strip("'")
+    name  = front.get('name', os.path.basename(path).replace('.md',''))
+    copy  = front.get('copy', '')
+    try:    visual_elements = _parse_list(front.get('visual_elements', '[]'))
+    except: visual_elements = []
+    try:    style_keyword = _parse_list(front.get('style_keyword', '[]'))
+    except: style_keyword = []
+    theme = front.get('theme', 'cyberpunk')
+    return name, copy, visual_elements, style_keyword, theme
 ```
 
-**实际项目 Prompt 示例（warp-terminal）**:
+### 常用 visual_elements 组合示例
 
-```markdown
----
-name: AI补全
-type: text
-copy: AI补全让我打字停不下来
-style_keyword: [代码补全条, 渐变文字, 灰色代码背景]
-visual_elements: [补全下拉框, 代码片段, Tab键图标, 灰色代码背景, 青色高亮文字]
-aspect_ratio: "3:4"
----
+```yaml
+# 画布手写：画布 + AI大脑 + 等号
+visual_elements: [math_canvas, brain, equals_sign]
 
-# 贴图提示词: AI补全
+# AI计算：AI大脑 + 神经网络 + 芯片
+visual_elements: [brain, neural_network, ai_chip]
 
-## 核心文案（必须展示在贴图中）
-AI补全让我打字停不下来
+# 等号求解：等号 + 问号 + AI
+visual_elements: [equals_sign, question_mark, brain]
 
-## 视觉设计规则
-- **主体**: 代码编辑器补全下拉框，内含灰色代码片段
-- **补全框**: 深色半透明背景，白色边框，青色高亮当前选项
-- **代码文字**: 灰色代码字 + 青色补全提示文字
-- **Tab图标**: 右下角显示 Tab 键图标，暗示按Tab接受补全
-- **背景**: 浅灰色代码编辑区纹理
+# 清空重写：橡皮擦 + 问号 + AI
+visual_elements: [eraser, question_mark, brain]
 
-## 风格要求
-- **风格**: cyberpunk（赛博朋克）
-- **配色**: 深灰背景 + 青色(#00FFFF)高亮 + 白色代码
-- **主视觉**: 补全下拉框占画面60%，文字框占底部40%
-- **尺寸**: 1080×1440px
-- **格式**: PNG（透明或主题相关背景）
 
-## 文字展示
-- 位置: 画布底部，居中
-- 左右边距: 30px
-- 距底边: 30px
-- 支持多行换行
+# 答案揭晓：等号 + AI + 对勾
+visual_elements: [equals_sign, brain, checkmark]
 ```
 
-```markdown
----
-name: 命令面板
-type: text
-copy: ⌘K一按命令全搞定超方便
-style_keyword: [Command+K按键, 搜索框, 霓虹边框]
-visual_elements: [⌘K大按键, 深色搜索框, 模糊命令列表, 霓虹发光边框]
-aspect_ratio: "3:4"
 ---
 
-# 贴图提示词: 命令面板
+## Remotion 帧设计（frame-design.md）
 
-## 核心文案（必须展示在贴图中）
-⌘K一按命令全搞定超方便
+> 详见 [frame-design.md](frame-design.md) 独立文档。
 
-## 视觉设计规则
-- **主体**: 超大 ⌘K 按键，占据画面中心上方40%
-- **按键设计**: 圆形/圆角矩形，青色边框发光，内含 ⌘ 和 K 两个字母
-- **搜索框**: 按键下方，半透明深色框，内有模糊的命令列表
-- **发光效果**: 按键边缘青色霓虹发光
+每张贴图对应一个 Remotion `<Still>` 组件，用代码精确控制每一帧的视觉元素。
 
-## 风格要求
-- **风格**: cyberpunk（赛博朋克）
-- **配色**: 黑色背景 + 青色发光(#00FFFF) + 洋红点缀(#FF00FF)
-- **主视觉**: ⌘K 按键占50%，文字框占底部40%
-- **尺寸**: 1080×1440px
-- **格式**: PNG（透明或主题相关背景）
+### 设计原则
 
-## 文字展示
-- 位置: 画布底部，居中
-- 左右边距: 30px
-- 距底边: 30px
-- 支持多行换行
+1. **独特性**：每帧根据贴图主题单独设计视觉元素
+2. **精细化**：字体、颜色、位置、动画曲线均可精确控制
+3. **导出PNG**：通过 `npx remotion still` 导出单帧图像
+
+### 项目结构
+
+```
+remotion/{sticker-name}/
+wechat-stickers/{项目根目录}/                              ← 用户项目目录
+│
+├── prompts/                             ← 贴图提示词源文件（输入）
+│   ├── 01-贴图1.md
+│   └── 02-贴图2.md
+│
+├── remotion-sticker/      ← 阶段二 Remotion 项目（每张贴图一个帧）
+│   ├── package.json                     ← @remotion/cli 4.0.448, remotion 4.0.448
+│   └── src/
+│       ├── index.tsx                    ← registerRoot 入口
+│       ├── StickerComponent.tsx          ← 外层组件（返回 <Composition>）
+│       ├── StickerContent.tsx           ← 内层组件（含 useCurrentFrame + 动画）
+│       └── styles.css
+│
+├── assets/                              ← 非指定风格的统一 PNG（可选）
+├── assets-cyberpunk/                    ← cyberpunk 风格 PNG
+├── assets-kawaii/                       ← kawaii 风格 PNG
+├── assets-neon/                         ← neon 风格 PNG
+├── assets-retro/                        ← retro 风格 PNG
+├── assets-hand-drawn/                   ← hand-drawn 风格 PNG
+├── assets-minimal/                      ← minimal 风格 PNG
+├── assets-meme/                         ← meme 风格 PNG
+│
+├── content-analysis.md                  ← 内容聚合分析文档
+├── sticker-manifest.md                  ← 贴图设计清单
+└── stickers.zip                        ← 最终打包（可选）
 ```
 
+### 导出命令
+
+```bash
+npx remotion still src/Root.tsx {CompositionId} \
+  --output out/{sticker-name}.png \
+  --width 1080 --height 1440
+```
+
+详见 [frame-design.md](frame-design.md)。

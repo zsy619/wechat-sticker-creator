@@ -1,65 +1,146 @@
 # Changelog - wechat-sticker-skill
 
-All notable changes to this skill are documented in this file.
+## v4.1.0 (2026-05-01) - GIF 动画 & 字体特效
 
-## v3.3.0 (2026-04-30)
+### 重大变更：PNG → GIF 动画
 
-### 方案D · 场景构图系统（重大重构）
+所有贴图输出格式从静态 PNG 升级为动态 GIF：
 
-- **重构布局引擎**：网格平铺 → 场景构图（BG → FOCUS → ACCENT 分层合成）
-  - 新增4种zone场景：`outer_ring`（单主体外围8方位）| `fill_gaps`（双主体缝隙填补）| `top_bottom`（三主体上下两端）| `full_scatter`（无主体全场弥散）
-  - 语义映射表 `ELEMENT_SCENE_ROLE`：关键词 → 场景角色（FOCUS/ACCENT/BG）
-  - 角色映射扩展：数学公式/AI图标/手写识别框 → ACCENT（不再误判为主体）
-  - 每个元素独立位置：不再共享布局，每个元素对应一个独立绘制区域
-  - 语义角色定义：FOCUS=居中放大，ACCENT=小尺寸散布
+| 项目 | 原值 | 新值 |
+|------|------|------|
+| 命令 | `remotion still` | `remotion render --frames 0-89` |
+| 帧数 | 1 帧 | **90帧**（3秒@30fps） |
+| 输出 | PNG (单帧) | **GIF**（动画） |
+| `durationInFrames` | 1 | **90** |
 
-### 词汇表驱动（v3.2）
+### frontmatter 解析修复
 
-- **重构绘制引擎**：name路由 → `visual_elements`词汇表驱动
-  - 词汇表注册表 `ELEMENT_VOCAB`：中英文别名 → 绘制函数
-  - 智能网格布局算法：根据元素数量自动排列（1/2/3/N个元素）
-  - 回退机制：词汇表无匹配时自动回退到name-based专用函数
-  - 新项目无需编写代码，只需要在prompts中描述 `visual_elements`
+`parse_prompt_file()` 之前在遇到第一个 `---` 后立即 break，导致 frontmatter 从未解析。修复为状态机：遇到第二个 `---` 才 break。
 
-### ai-math-notes 专属视觉函数
+### `_parse_list()` 安全解析
 
-- 新增6个专属视觉函数：画布手写 / AI计算 / 等号求解 / MathNotes / 清空重写 / 答案揭晓
-- SKILL.md 路由表：warp-terminal 6个 + ai-math-notes 6个 = 12个视觉函数
+`visual_elements: [黑色画布, 白色笔迹]` 中的中文词无法直接 `eval()`。新增 `_parse_list()` 函数手动解析逗号分隔数组，避免 NameError。
 
-### generate_stickers.py 修复
+### emoji_map 键值标准化
 
-- [修复] `parse_prompt_file` 返回值与 `main()` 解包数量不匹配（返回5值: name/text/copy/visual_elements/style_keywords）
-- [修复] `STICKER_SIZE=500` → `W=1080, H=1440`（微信贴图标准）
-- [修复] 字体大小按1080×1440比例放大（60→140等，约×2.2）
-- [重构] 所有风格 `Image.new` 背景从实色不透明改为透明 `RGBA(0,0,0,0)`
-- [重构] 圆形遮罩只应用于背景层，文字层独立绘制不受裁切
-- [修复] 文字底部改为以画布底边为基准（`y=H-30=1410`），圆形主题文字不再被裁切
-- [修复] WARP标签位置：改到主文字上方（`label_draw`在`text_bottom_draw`之前绘制，`y=tt-行高-8`）
-- [修复] `alpha_composite`层叠顺序：bg_layer在下、text_layer在上，文字完全覆盖背景
-- [完成] T1.1 圆形遮罩羽化（GaussianBlur r=15，边缘alpha渐进过渡）
-- [完成] T1.4 文字发光效果（8层外发光 + 4层中发光 + 黑色描边 + 白字）
-- [完成] 字体大小 120→110px（减10）
+`visual_elements` 中的 key 必须与 emoji_map 键完全匹配（中文 key → 英文 key）：
 
-### SKILL.md 更新
+```yaml
+# ✅ 正确
+visual_elements: [math_canvas, brain, equals_sign]
 
-- [更新] 版本 2.0.0 → 3.3.0
-- [新增] Prompt 格式 v3.0：`visual_elements` + `style_keyword` frontmatter 字段
-- [新增] 实际项目 Prompt 示例（warp-terminal：AI补全、命令面板）
-- [新增] 每张贴图的专属视觉生成规则（name→视觉函数路由机制）
-- [更新] Manifest 格式 v3.0：引用 prompts 中的 visual_elements，不再重复写入文案
-- [更新] 项目目录结构：新增 `assets-{theme}/` 多风格目录
-- [新增] 四阶段图片生成工作流（阶段一PIL → 阶段二AI混合 → 阶段三评估 → 阶段四自动化）
-- [新增] 阶段二AI主体生成：nano-banana-pro + 调色一致性方案
-- [新增] 阶段三质量评估维度表（光影/丰富度/文字精度/一致性/成本）
-- [新增] 阶段四自动化功能规划（`--mode ai-bg` / `--seed` / `--ai-provider`）
+# ❌ 错误（中文词不在 emoji_map 中）
+visual_elements: [黑色画布, 白色手写笔迹, 数学公式]
+```
 
-## v3.1 核心机制
+### emoji 词汇表更新
 
-- 每张贴图通过 `name` 字段路由到专属 PIL 绘图函数（6种已实现）
-- 文字固定在画布底部（距底边30px），不受圆形遮罩影响
-- 背景层应用圆形遮罩（R=500），文字层独立叠加
-- 支持7种风格：cyberpunk / kawaii / neon / retro / hand-drawn / minimal / meme
+| 元素键 | emoji | 备注 |
+|-------|-------|------|
+| brain / ai计算 / 神经网络 | 🧠 | |
+| math_canvas / canvas / 画布 | 📐 | 新增 math_canvas |
+| equals_sign / 等号 | ＝ | 使用全角符号避免 JSX `=` 语法冲突 |
+| question_mark / 问号 | ？ | 使用全角符号 |
+| ai_chip / 芯片 | 🤖 | |
+| eraser / 橡皮擦 | 🧹 | |
+| checkmark / 对勾 | ✓ | |
+| neural_network | 🧠 | 新增 |
+| terminal / 终端窗口 | 💻 | |
+| lightning / 闪电 | ⚡ | |
+| heart / 红心 | ❤ | |
 
-## v3.0 初始版本
+### JSX 双括号转义
 
-- 四阶段图片生成工作流：阶段一PIL本地生成 → 阶段二AI背景+PIL合成 → 阶段三质量评估 → 阶段四自动化集成
+Python 生成 JSX HTML 时，`style={...}` 中的 `{}` 必须双写。修复方式：使用**字符串拼接**而非 f-string 插值。
+
+```python
+# ✅ 正确
+span_base = "{{fontSize:260,lineHeight:1}}"
+emojis_html += "  <span style=" + span_base + ">" + em + "</span>\n"
+
+# ❌ 错误（f-string 中 {{ 仅为 {）
+emojis_html += f'  <span style={{fontSize:260}}>{em}</span>\n'
+```
+
+### `__ELEMENTS_HTML__` 注入点修复
+
+模板中 `__ELEMENTS_HTML__` 原来在 JSX 注释中，无法渲染。修复为直接嵌入 `<div>` 容器内的 JSX 元素。
+
+### 动画效果系统（5个动画函数）
+
+```tsx
+// 1. 呼吸发光
+const glowOpacity = interpolate(spring({...}), [0,1], [0.4,1]);
+
+// 2. 脉冲缩放
+const scale = interpolate(frame, [0,15,30], [1,1.06,1]);
+
+// 3. 浮空动画
+const floatY = interpolate(frame, [0,30], [0,-18]);
+
+// 4. 文字闪烁
+const textFlash = interpolate(frame, [0,8,15,22,30], [1,0.85,1,0.9,1]);
+
+// 5. 外发光强度动画
+const outerGlow = interpolate(frame, [0,15,30], [1,1.4,1]);
+```
+
+### 5层霓虹 text-shadow 系统
+
+```tsx
+textShadow: `
+  0 0 20*outerGlow px PRIMARY60,   // 外扩散（4层）
+  0 0 12*outerGlow px SECONDARY80, // 副色辉光（2层）
+  0 0 6*outerGlow px PRIMARYcc,    // 主色紧密辉光
+  0 0 3*outerGlow px rgba(255,255,255,0.9), // 白色高亮
+  3px 3px 0 rgba(0,0,0,0.9)        // 黑色阴影
+`
+```
+
+### 文字渐变填充
+
+```tsx
+background: `linear-gradient(180deg, #FFFFFF 0%, ${PRIMARY} 100%)`,
+WebkitBackgroundClip: 'text',
+WebkitTextFillColor: 'transparent',
+backgroundClip: 'text',
+```
+
+---
+
+## v4.0.1 (2026-04-30) - Remotion 修复
+
+### Remotion 第二阶段问题修复（6个关键问题）
+
+1. **@remotion/cli 3.3.0 ≠ remotion 4.0.448**：临时项目 package.json 需固定版本一致
+2. **JSX 属性语法**：`<Composition fps=30>` 错误，正确为 `fps={30}`
+3. **spring() 缺少 fps 参数**：必须传 `fps: FPS` 否则报错 `"fps" must be a number`
+4. **React 导入**：`import React from 'remotion'` 报错，应为 `import React from 'react'`
+5. **useCurrentFrame() 调用位置**：必须在 inner 组件（StickerContent）中，outer 组件（StickerComponent）不能调用
+6. **超时延长**：120s → 300s（Remotion npm install + 渲染需要更长时间）
+7. **目录创建**：主循环前加 `os.makedirs(args.output, exist_ok=True)`
+8. **文件输入处理**：`os.path.isfile()` 支持单文件输入
+
+### 三层组件架构确立
+
+```
+registerRoot(StickerComponent)
+    ↓
+StickerComponent（外层，返回 <Composition>）
+    ↓
+StickerContent（内层，含 useCurrentFrame）
+```
+
+---
+
+## v4.0.0 (2026-04-30) - 重大重构
+
+### 核心变更：三段式图像生成
+
+| 优先级 | 方式 | 说明 |
+|--------|------|------|
+| 1 | AI生成图像 | 调用大模型直接生成高质量帧 |
+| 2 | Remotion帧导出 | 每张贴图构建独立 Remotion 项目，导出 PNG |
+| 3 | PIL本地生成 | 词汇表驱动，场景构图（兜底） |
+
+**自动降级机制**：每层失败自动尝试下一层，无需人工干预。

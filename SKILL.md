@@ -1,96 +1,129 @@
-***
-
+---
 name: wechat-sticker-skill
 description: Create WeChat emoji sticker series from any input (URL, topic, or content). Use when user asks to "做微信贴图", "微信贴图", "创建微信贴图包", "WeChat stickers", "微信emoji", "根据内容生成贴图", "做一套贴图", "生成贴图". Triggers on sticker creation, emoji design, reaction images, or any WeChat sticker-related request.
-version: 3.3.0
-tags: ["wechat", "sticker", "emoji", "表情包", "贴图", "微信贴图", "个性化", "专属视觉"]
+version: 4.1.0
+tags: ["wechat", "sticker", "emoji", "表情包", "贴图", "微信贴图", "remotion", "frame-generation"]
 metadata:
   author: zhushuyan
-  updated: 2026-04-30
-
-> **更新日志**：所有变更记录在 [CHANGELOG.md](./CHANGELOG.md)，本文件仅保留最新版本说明。
-
+  updated: 2026-05-01
 ---
 
-# 微信贴图生成器 (WeChat Sticker Creator)
+> **更新日志**：所有变更记录在 [CHANGELOG.md](./CHANGELOG.md)。
+
+# 微信贴图生成器 v4.1.0 (WeChat Sticker Creator)
 
 本技能根据用户输入（链接、主题或内容），自动进行内容聚合、贴图设计和生成，输出一套完整的微信表情包。
 
-## 文档结构
-
-```
-wechat-sticker-skill/
-├── SKILL.md              ← 本文件，入口
-├── CHANGELOG.md          ← 更新日志
-├── scripts/
-│   └── generate_stickers.py   ← PIL 生成器
-└── docs/
-    ├── workflow.md        ← 核心工作流、输入检测、搜索策略、项目命名
-    ├── content-format.md  ← content-analysis / sticker-manifest / copy / prompts 格式
-    ├── image-generation.md← 四阶段图片生成工作流
-    ├── output.md          ← 最终输出、ZIP打包、公众号发布规格
-    └── qa.md              ← 标签策略、质量检查清单、故障排除
-```
-
-## 快速开始
+## 核心设计：三段式图像生成
 
 ```
 用户输入(链接/主题/内容)
     ↓
-内容聚合分析 (docs/content-format.md → content-analysis.md)
+内容聚合分析 → 贴图设计 → 提示词生成
     ↓
-贴图设计 Manifest (docs/content-format.md → sticker-manifest.md)
+┌─ 图像生成（优先级递进） ───────────────────────────────┐
+│  ① AI生成图像（首选）                                   │
+│     调用大模型（GPT-Image / Seedream 等）直接生成高质量帧
+│     ↓ 异常                                              │
+│  ② Remotion 帧导出（第二选择）                          │
+│     每张贴图构建独立 Remotion 项目，每帧 = <Composition> 组件
+│     导出 **GIF**（90帧动画），独特视觉设计 + 动画特效                              │
+│     ↓ 异常                                              │
+│  ③ PIL 本地生成（兜底）                                 │
+│     词汇表驱动，场景构图，程序化几何绘制                 │
+└────────────────────────────────────────────────────────┘
     ↓
-生成贴图提示词 (docs/content-format.md → prompts/*.md)
-    ↓
-图片生成 (scripts/generate_stickers.py)
-    ↓
-输出汇总 & 标签推荐
+最终输出（ZIP / 公众号发布）
 ```
 
-## 核心设计
+**优先级**：AI → Remotion → PIL。每层失败自动降级，无需人工干预。
 
-### 词汇表驱动绘制
+## skill 项目结构
 
-`prompts/*.md` 中的 `visual_elements` 字段直接驱动 PIL 绘制，无需为新项目编写代码：
+```
+wechat-stickers/                    ← 技能根目录
+│
+├── SKILL.md                              ← 入口文件
+├── CHANGELOG.md                          ← 更新日志
+│
+├── remotion/                              ← Remotion 模板源文件（阶段二读取）
+│   ├── template/
+│   │   ├── index.tsx                     ← registerRoot 入口模板
+│   │   ├── StickerComponent.tsx          ← 外层组件模板（返回 <Composition>）
+│   │   └── StickerContent.tsx            ← 内层组件模板（含 useCurrentFrame）
+│   ├── components/
+│   │   └── EmojiElement.tsx              ← 可复用 emoji 组件
+│   └── styles/
+│       └── base.css                      ← 基础样式
+│
+├── scripts/
+│   ├── generate_frames.py                ← 主脚本（读取 remotion/template/ 生成项目）
+│   └── pil_fallback.py                   ← PIL 兜底生成器
+│
+└── docs/                                ← 规范文档
+    ├── workflow.md                       ← 核心工作流
+    ├── content-format.md                ← 内容格式（content-analysis / manifest / prompts）
+    ├── frame-design.md                  ← Remotion 帧设计规范
+    ├── remotion-projects.md             ← Remotion 项目完整结构
+    ├── project-structure.md              ← 项目目录结构
+    ├── image-generation.md               ← 三段式图像生成流程
+    ├── output.md                        ← 最终输出与打包
+    └── qa.md                           ← 质量检查
 
-```yaml
----
-name: 摸鱼神器
-copy: 摸鱼中，勿扰
-visual_elements: [brain, 终端窗口, 红心]
-style_keyword: [cyberpunk, 赛博朋克]
----
 ```
 
-脚本根据 `visual_elements` 自动匹配词汇表函数，按场景角色（FOCUS 主体 / ACCENT 点缀）布局。
+## 项目目录结构
 
-### 场景构图系统（方案D）
+详见 [docs/project-structure.md](docs/project-structure.md)。
 
-| 布局 | 触发条件 | FOCUS分布 | ACCENT分布 |
-|------|---------|----------|-----------|
-| `single` | 1个FOCUS | 中心放大 | 外围8方位 |
-| `dual` | 2个FOCUS | 左右均分 | 缝隙填补+外围 |
-| `triple` | ≥3个FOCUS | 三列横排 | 上下两端 |
-| `diffuse` | 无FOCUS | — | 全场弥散 |
-
-语义角色：`ELEMENT_SCENE_ROLE` 将关键词映射为 FOCUS（适合居中放大）或 ACCENT（适合小尺寸散布）。
-
-### 支持的风格
-
-`cyberpunk` / `kawaii` / `neon` / `retro` / `hand-drawn` / `minimal` / `meme`
-
-### 生成命令
+## 快速开始
 
 ```bash
-python3 scripts/generate_stickers.py \
+# 完整生成流程（自动三段式降级）
+python3 scripts/generate_frames.py \
   --input prompts/ \
-  --output assets-cyberpunk/ \
+  --output assets/ \
+  --theme cyberpunk
+
+# 仅 PIL 兜底（调试用）
+python3 scripts/pil_fallback.py \
+  --input prompts/ \
+  --output assets-pil/ \
   --theme cyberpunk
 ```
 
+## 核心概念
+
+### 为什么是 Remotion？
+
+PIL 的程序化绘制有上限——无法生成真正的语义图像（大模型理解"赛博朋克风格 AI 大脑"的细节远超过几何堆叠）。Remotion 作为 React 组件，可以用代码精确控制每一帧的视觉元素，适合需要高质量、独特视觉设计的贴图。
+
+### 三段式降级机制
+
+| 优先级 | 方式 | 优势 | 劣势 |
+|--------|------|------|------|
+| 1 | AI生成 | 语义理解、真实光影、细节丰富 | API成本、调用失败可能 |
+| 2 | Remotion帧导出 | 像素级控制、程序化精确、动画可能 | 需要Node.js环境、帧组件编写 |
+| 3 | PIL | 无需网络、完全本地、执行稳定 | 视觉上限低、程序化几何 |
+
+### Remotion 帧设计原则
+
+每张贴图对应一个 Remotion `<Still>` 组件，关键要求：
+- **独特性**：每帧根据贴图主题单独设计视觉元素（不通用模板）
+- **精细化**：字体、颜色、位置、动画曲线均可精确控制
+- **导出PNG**：通过 `npx remotion still` 导出单帧图像
+
+详见 [docs/content-format.md](docs/content-format.md#remotion-帧设计frame-designmd)。
+
+## 支持的风格
+
+`cyberpunk` / `kawaii` / `neon` / `retro` / `hand-drawn` / `minimal` / `meme`
+
 ## 详细文档
 
+- **Remotion 帧设计** → [docs/frame-design.md](docs/frame-design.md)
+- **Remotion 项目结构** → [docs/remotion-projects.md](docs/remotion-projects.md)
+- **项目目录结构** → [docs/project-structure.md](docs/project-structure.md)
 - **工作流与规范** → [docs/workflow.md](docs/workflow.md)
 - **内容格式** → [docs/content-format.md](docs/content-format.md)
 - **图片生成** → [docs/image-generation.md](docs/image-generation.md)
