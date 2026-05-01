@@ -188,10 +188,9 @@ const StickerScene: React.FC<StickerSceneProps> = ({ copy, emojis_str, frameOffs
   );
 };
 
-/* ── 主组件（外层，注册 Composition，不直接用帧） ─────── */
+/* ── 主组件（外层，注册 Composition，不直接参与动画） ─────── */
 
 export const StickerContent: React.FC = () => {
-  useCurrentFrame(); // 保持调用，但不直接参与动画逻辑
   return (
     <div>
       __SEQUENCES__

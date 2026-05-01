@@ -130,11 +130,73 @@ def build_ai_prompt(name, copy, style_keyword, theme_key):
         f"高质量，精致细节"
     )
 
+def _call_ai_provider(provider, prompt, timeout=60, max_retries=3):
+    """
+    统一 HTTP 调用逻辑：429 重试（10s 等待，最多3次）+ 超时降级 + 各 Provider 响应解析。
+    返回 (image_data_or_url, is_b64) 或抛出异常。
+    """
+    url = provider["url"]
+    headers = provider["headers"]()
+    body = json.dumps(provider["body"]()).encode()
+
+    for attempt in range(max_retries):
+        try:
+            req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+            resp = urllib.request.urlopen(req, timeout=timeout)
+            status = resp.status
+            data = json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            status = e.code
+            try:
+                err_body = json.loads(e.read())
+            except Exception:
+                err_body = {}
+        except (urllib.error.URLError, TimeoutError) as e:
+            # 超时或网络错误 → 抛出特定异常，触发降级
+            raise RuntimeError(f"网络错误/超时: {e}")
+
+        # 429 限流：等待后重试
+        if status == 429:
+            if attempt < max_retries - 1:
+                wait_sec = 10 * (attempt + 1)
+                log(f"[{provider['name']}] 429 限流，等待 {wait_sec}s 后重试（第 {attempt+1}/{max_retries} 次）", "WARN")
+                import time; time.sleep(wait_sec)
+                continue
+            else:
+                raise RuntimeError(f"429 限流，已重试 {max_retries} 次仍失败")
+
+        # 401/403/402 等认证/付款错误 → 跳过该 provider
+        if status in (401, 403, 402):
+            raise RuntimeError(f"认证/付款错误 ({status})")
+
+        # 其他 HTTP 错误
+        if status >= 400:
+            raise RuntimeError(f"HTTP {status}: {err_body}")
+
+        # 正常：解析 image_url
+        image_url = None
+        if provider["name"] == "dashscope" and "data" in data:
+            image_url = data["data"][0].get("url")
+        elif provider["name"] == "seedream":
+            # 火山引擎 Seedream 响应格式
+            if "data" in data and data["data"]:
+                image_url = data["data"][0].get("image_url") or data["data"][0].get("image_base64")
+        elif "data" in data and len(data["data"]) > 0:
+            image_url = data["data"][0].get("url") or data["data"][0].get("b64_json")
+
+        if not image_url:
+            raise RuntimeError(f"响应中无 image_url: {str(data)[:200]}")
+        return image_url
+
+    raise RuntimeError(f"重试耗尽")
+
+
 def generate_ai_image(name, copy, style_keyword, theme_key, output_path):
     """
     调用 AI API 生成图像。
     按 Provider 优先级尝试，成功则保存到 output_path。
     失败则抛出异常，触发降级。
+    支持 429 自动重试、超时降级、多 Provider 格式解析。
     """
     prompt = build_ai_prompt(name, copy, style_keyword, theme_key)
 
@@ -149,6 +211,21 @@ def generate_ai_image(name, copy, style_keyword, theme_key, output_path):
                 "prompt": prompt,
                 "size": "1024x1024",
                 "n": 1,
+            },
+        },
+        {
+            "name": "seedream",
+            "url": "https://visual.volcengineapi.com/?Action=TextToImage&Version=2023-05-01",
+            "headers": lambda: {
+                "Authorization": f"Bearer {os.environ.get('VOLCENGINE_API_KEY', os.environ.get('SEEDREAM_API_KEY',''))}",
+                "Content-Type": "application/json",
+            },
+            "body": lambda: {
+                "model": "doubao-seedream-5-0-260128",
+                "prompt": prompt,
+                "width": 1024,
+                "height": 1024,
+                "num_images": 1,
             },
         },
         {
@@ -179,25 +256,9 @@ def generate_ai_image(name, copy, style_keyword, theme_key, output_path):
 
     for p in providers:
         try:
-            body = p["body"]()
-            req = urllib.request.Request(
-                p["url"],
-                data=json.dumps(body).encode(),
-                headers=p["headers"](),
-                method="POST"
-            )
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                data = json.loads(resp.read())
+            image_url = _call_ai_provider(p, prompt)
 
-            image_url = None
-            if p["name"] == "dashscope" and "data" in data:
-                image_url = data["data"][0]["url"]
-            elif "data" in data and len(data["data"]) > 0:
-                image_url = data["data"][0].get("url") or data["data"][0].get("b64_json")
-
-            if not image_url:
-                continue
-
+            # 下载图片数据
             if image_url.startswith('data:'):
                 import base64
                 b64 = image_url.split(',')[1]
@@ -216,9 +277,16 @@ def generate_ai_image(name, copy, style_keyword, theme_key, output_path):
             log(f"[AI:{p['name']}] {name} 生成成功", "OK")
             return True
 
-        except (urllib.error.HTTPError, urllib.error.URLError,
-                KeyError, IndexError, IOError) as e:
-            log(f"[AI:{p['name']}] {name} 失败: {e}", "WARN")
+        except RuntimeError as e:
+            err_msg = str(e)
+            if "429" in err_msg or "限流" in err_msg:
+                log(f"[AI:{p['name']}] {name} 限流: {err_msg}", "WARN")
+            elif "超时" in err_msg or "网络错误" in err_msg:
+                log(f"[AI:{p['name']}] {name} 超时/网络错误，降级: {err_msg}", "WARN")
+            elif "认证" in err_msg or "付款" in err_msg or "402" in err_msg or "403" in err_msg:
+                log(f"[AI:{p['name']}] {name} 认证/付款错误: {err_msg}", "WARN")
+            else:
+                log(f"[AI:{p['name']}] {name} 失败: {err_msg}", "WARN")
             continue
         except Exception as e:
             log(f"[AI:{p['name']}] {name} 异常: {e}", "ERROR")
@@ -456,36 +524,153 @@ def pil_fallback(name, copy, visual_elements, theme_key, output_path):
 
     cx, cy = W // 2, H // 2 - 60
     elem_fns = {
+        # FOCUS 元素（几何绘制）
         'brain': lambda: draw.ellipse([cx-150, cy-150, cx+150, cy+150], fill=primary + (80,)),
         'neural_network': lambda: (
             [draw.ellipse([cx-200+nx*80, cy-100+ny*60, cx-200+nx*80+24, cy-100+ny*60+24],
               fill=primary+(180,) if (nx+ny)%2==0 else secondary+(180,))
              for nx in range(6) for ny in range(4)]
-        ) if True else None,
+        ),
         'terminal': lambda: draw.rectangle([cx-300, cy-175, cx+300, cy+175], fill=(15,15,28,255), outline=primary+(200,), width=2),
+        'math_canvas': lambda: draw.rectangle([cx-380, cy-250, cx+380, cy+250], fill=(10,10,10,255)),
+        'ai_chip': lambda: draw.rectangle([cx-120, cy-120, cx+120, cy+120], fill=primary+(60,), outline=primary+(200,), width=3),
+        'spotlight': lambda: (
+            draw.ellipse([cx-200, cy-250, cx+200, cy+250], fill=(255,255,200,25)),
+            draw.ellipse([cx-100, cy-150, cx+100, cy+150], fill=(255,255,200,40)),
+        ),
+        'network_node': lambda: (
+            [draw.ellipse([cx-180+nx*90, cy-90+ny*70, cx-180+nx*90+20, cy-90+ny*70+20],
+              fill=primary+(200,))
+             for nx in range(5) for ny in range(3)]
+        ),
+        'button': lambda: draw.rectangle([cx-150, cy-60, cx+150, cy+60], fill=primary+(200,), outline=primary+(255,), width=3),
+        # 符号元素（通过 Unicode/emoji 渲染）
         'lightning': lambda: draw.text((cx-50, cy-80), "⚡", fill=(255,255,255,255), font=get_font(80)),
         'heart': lambda: draw.text((cx-60, cy-60), "❤", fill=(255,60,90,255), font=get_font(80)),
         'equals_sign': lambda: draw.text((cx-50, cy-50), "=", fill=(255,255,255,255), font=get_font(80)),
         'question_mark': lambda: draw.text((cx-30, cy-40), "?", fill=primary+(255,), font=get_font(80)),
         'eraser': lambda: draw.text((cx-40, cy-40), "🧹", fill=(200,150,100,255), font=get_font(60)),
         'checkmark': lambda: draw.text((cx-40, cy-40), "✓", fill=(0,255,136,255), font=get_font(80)),
-        'math_canvas': lambda: draw.rectangle([cx-380, cy-250, cx+380, cy+250], fill=(10,10,10,255)),
-        'ai_chip': lambda: draw.rectangle([cx-120, cy-120, cx+120, cy+120], fill=primary+(60,), outline=primary+(200,), width=3),
-        'spotlight': lambda: (
-            draw.ellipse([cx-200, cy-250, cx+200, cy+250], fill=(255,255,200,25)),
-            draw.ellipse([cx-100, cy-150, cx+100, cy+150], fill=(255,255,200,40)),
-        ) if True else None,
-        'network_node': lambda: (
-            [draw.ellipse([cx-180+nx*90, cy-90+ny*70, cx-180+nx*90+20, cy-90+ny*70+20],
-              fill=primary+(200,))
-             for nx in range(5) for ny in range(3)]
-        ) if True else None,
-        'button': lambda: draw.rectangle([cx-150, cy-60, cx+150, cy+60], fill=primary+(200,), outline=primary+(255,), width=3),
+        # 非 emoji 纯符号绘制（code/algorithm/function/variable/bio/secret）
+        'code': lambda: (
+            draw.rectangle([cx-300, cy-175, cx+300, cy+175], fill=(15,15,28,255), outline=primary+(200,), width=2),
+            draw.text((cx-240, cy-100), ">>>", fill=(0,255,136,255), font=get_font(48)),
+            draw.text((cx-240, cy-40), "def f(x):", fill=(0,200,255,255), font=get_font(40)),
+            draw.text((cx-240, cy+20), "    return x", fill=(150,150,150,255), font=get_font(36)),
+        ),
+        'algorithm': lambda: (
+            draw.rectangle([cx-260, cy-200, cx-60, cy-120], fill=primary+(60,), outline=primary+(200,), width=2),
+            draw.rectangle([cx-60, cy-200, cx+140, cy-120], fill=secondary+(60,), outline=secondary+(200,), width=2),
+            draw.rectangle([cx-160, cy-60, cx+40, cy+20], fill=primary+(60,), outline=primary+(200,), width=2),
+            draw.text((cx-200, cy-170), "IN", fill=(255,255,255,255), font=get_font(32)),
+            draw.text((cx-10, cy-170), "PROC", fill=(255,255,255,255), font=get_font(32)),
+            draw.text((cx-120, cy-30), "OUT", fill=(255,255,255,255), font=get_font(32)),
+        ),
+        'function': lambda: draw.text((cx-200, cy-40), "ƒ(x) =", fill=primary+(255,), font=get_font(72)),
+        'variable': lambda: (
+            draw.text((cx-120, cy-40), "x =", fill=primary+(255,), font=get_font(72)),
+            draw.text((cx+20, cy-30), "???", fill=secondary+(255,), font=get_font(56)),
+        ),
+        'bio': lambda: (
+            [(
+                draw.ellipse([cx-160+ny*40-8, cy-120+ny*30-8, cx-160+ny*40+8, cy-120+ny*30+8], fill=primary+(180,)),
+                draw.ellipse([cx+160-ny*40-8, cy-120+ny*30-8, cx+160-ny*40+8, cy-120+ny*30+8], fill=secondary+(180,)),
+                draw.line([cx-160+ny*40, cy-120+ny*30, cx+160-ny*40, cy-120+ny*30], fill=primary+(80,), width=2),
+            ) for ny in range(9)],
+        ),
+        'secret': lambda: (
+            draw.text((cx-140, cy-50), "***", fill=(255,215,0,255), font=get_font(80)),
+            draw.text((cx-200, cy+50), "CLASSIFIED", fill=(255,100,100,255), font=get_font(28)),
+        ),
+    }
+
+    # emoji_map：用于兜底渲染（覆盖80+词汇表）
+    emoji_map = {
+        "brain": "🧠", "ai大脑": "🧠", "ai计算": "🧠",
+        "神经网络": "🧠", "neural_network": "🧠",
+        "terminal": "💻", "终端窗口": "💻",
+        "lightning": "⚡", "闪电": "⚡", "zap": "⚡",
+        "equals_sign": "＝", "等号": "＝",
+        "question_mark": "？", "问号": "？",
+        "eraser": "🧹", "橡皮擦": "🧹",
+        "checkmark": "✓", "对勾": "✓",
+        "math_canvas": "📐", "canvas": "📐", "画布": "📐",
+        "ai_chip": "🤖", "芯片": "🤖", "robot": "🤖",
+        "spotlight": "🔦", "光晕": "🔦",
+        "network_node": "🔗", "网络节点": "🔗", "link": "🔗",
+        "button": "🔘", "按钮": "🔘",
+        "code": "💻", "cpu": "🖥️", "server": "🗄️",
+        "database": "🗃️", "cloud": "☁️", "data": "📊",
+        "algorithm": "🔣", "function": "ƒ", "variable": "x",
+        "debug": "🐛", "deploy": "🚀",
+        "heart": "❤", "红心": "❤",
+        "thumbs_up": "👍", "clap": "👏",
+        "pray": "🙏", "muscle": "💪",
+        "thinking": "🤔", "eyes": "👀",
+        "trophy": "🏆", "medal": "🏅", "crown": "👑",
+        "star": "⭐", "fire": "🔥", "hundred": "💯",
+        "laugh": "😂", "cry": "😭", "angry": "😡",
+        "cool": "😎", "shy": "😳", "sleeping": "😴",
+        "rocket": "🚀", "alarm": "⏰", "bell": "🔔",
+        "megaphone": "📢", "wrench": "🔧", "hammer": "🔨",
+        "scissors": "✂️", "pencil": "✏️", "book": "📖",
+        "lightbulb": "💡", "bulb": "💡",
+        "envelope": "✉️", "gift": "🎁",
+        "tada": "🎉", "balloon": "🎈", "confetti": "🎊",
+        "coffee": "☕", "tea": "🍵", "beer": "🍺",
+        "cocktail": "🍸", "wine": "🍷",
+        "pizza": "🍕", "rice": "🍚", "fruit": "🍎",
+        "cake": "🎂", "cookie": "🍪", "bread": "🍞",
+        "phone": "📱", "camera": "📷", "clipboard": "📋",
+        "chart": "📈", "calendar": "📅",
+        "key": "🔑", "lock": "🔒",
+        "folder": "📁", "file": "📄",
+        "email": "📧", "call": "📞",
+        "microphone": "🎤", "video": "🎬", "tv": "📺",
+        "clock": "⏱️", "hourglass": "⏳",
+        "pen": "🖊️", "ruler": "📏",
+        "paperclip": "📎", "stamp": "📮",
+        "inbox": "📥", "outbox": "📤",
+        "earth": "🌏", "moon": "🌙", "sun": "☀️",
+        "rainbow": "🌈", "snowflake": "❄️",
+        "wave": "🌊", "anchor": "⚓",
+        "airplane": "✈️", "car": "🚗", "bicycle": "🚲",
+        "map": "🗺️", "compass": "🧭",
+        "flag": "🚩", "satellite": "🛰️",
+        "telescope": "🔭", "microscope": "🔬",
+        "money": "💰", "gem": "💎",
+        "love_letter": "💌",
+        "warning": "⚠️", "no_entry": "⛔",
+        "busy": "🉐", "free": "🆓", "secret": "🤫",
+        "goal": "🎯", "puzzle": "🧩",
+        "music": "🎵", "headphones": "🎧",
+        "sound": "🔊", "mute": "🔇",
+        "eye": "👁️", "ear": "👂", "nose": "👃",
+        "footprints": "👣",
+        "bone": "🦴", "microbe": "🦠",
+        "pill": "💊", "syringe": "💉",
+        "thermometer": "🌡️",
+        "magnet": "🧲", "gear": "⚙️",
+        "atom": "⚛️", "dna": "🧬",
+        "biohazard": "☣️", "radioactive": "☢️",
+        "bio": "🌱",
+        "four_leaf": "🍀", "maple": "🍁",
+        "cherry": "🌸", "tulip": "🌷",
+        "rose": "🌹", "hibiscus": "🌺",
+        "shell": "🐚", "feather": "🪶",
+        "sparkle": "✨", "diamond": "💠",
+        "fleur": "⚜️", "comet": "☄️",
     }
 
     for elem in visual_elements:
         fn = elem_fns.get(elem)
-        if fn: fn()
+        if fn:
+            fn()
+        else:
+            # 兜底：尝试作为 emoji 渲染
+            emoji = emoji_map.get(elem)
+            if emoji:
+                draw.text((cx - 50, cy - 60), emoji, fill=(255, 255, 255, 255), font=get_font(80))
 
     font = get_font(60)
     tw = sum(font.getbbox(c)[2] for c in copy)

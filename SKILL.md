@@ -1,16 +1,17 @@
 ---
 name: wechat-sticker-skill
 description: Create WeChat emoji sticker series from any input (URL, topic, or content). Use when user asks to "做微信贴图", "微信贴图", "创建微信贴图包", "WeChat stickers", "微信emoji", "根据内容生成贴图", "做一套贴图", "生成贴图". Triggers on sticker creation, emoji design, reaction images, or any WeChat sticker-related request.
-version: 4.2.0
+version: 4.3.0
 tags: ["wechat", "sticker", "emoji", "表情包", "贴图", "微信贴图", "remotion", "frame-generation"]
 metadata:
   author: zhushuyan
   updated: "2026-05-01"
 ---
 
+
 > **更新日志**：所有变更记录在 [CHANGELOG.md](./CHANGELOG.md)。
 
-# 微信贴图生成器 v4.2.0 (WeChat Sticker Creator)
+# 微信贴图生成器 v4.3.0 (WeChat Sticker Creator)
 
 本技能根据用户输入（链接、主题或内容），自动进行内容聚合、贴图设计和生成，输出一套完整的微信表情包。
 

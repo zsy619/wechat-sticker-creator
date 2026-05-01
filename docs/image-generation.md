@@ -94,7 +94,10 @@ npx remotion still → PNG
 mkdir -p remotion/{sticker-name}/src
 ```
 
-### 导出 PNG
+### 导出 GIF（带动画）
+
+> 注意：本项目使用 Remotion **渲染 GIF 动画**（每贴图 90 帧 @30fps），而非导出单帧 PNG Still。
+> `npx remotion still` 用于导出单帧 PNG；`npx remotion render` 用于导出多帧 GIF/MP4。
 
 ```bash
 cd remotion/{sticker-name}

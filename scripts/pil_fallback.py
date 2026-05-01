@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """
 pil_fallback.py - PIL 本地兜底生成器
-当 AI 和 Remotion 均不可用时，使用此脚本生成贴图。
+
+纯离线运行，无需网络。读取 prompts/ 目录，生成 PNG 贴图。
 
 Usage:
-    python3 pil_fallback.py --input prompts/ --output assets/ --theme cyberpunk
+    python3 scripts/pil_fallback.py --input prompts/ --output assets-pil/ --theme cyberpunk
 """
 
-import os, sys, math, glob, argparse
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+import os, sys, glob, argparse
 
+# ── 常量 ───────────────────────────────────────────────────
 W, H = 1080, 1440
-TEXT_MARGIN = TEXT_BOTTOM = 30
-CIRCULAR_THEMES = {"cyberpunk", "kawaii", "neon"}
 
 THEMES = {
     "cyberpunk":  {"primary": "#00FFFF", "secondary": "#FF00FF", "bg": "#0D0D1A", "text": "#FFFFFF", "accent": "#00FF88"},
@@ -24,236 +23,309 @@ THEMES = {
     "meme":       {"primary": "#FF4500", "secondary": "#FFD700", "bg": "#1A1A1A", "text": "#FFFFFF", "accent": "#FF6347"},
 }
 
-CIRCLE_CX, CIRCLE_CY, CIRCLE_R = W//2, H//2, 500
-CIRCLE_RADIUS_BLUR = 15
+# ── 字体 ───────────────────────────────────────────────────
+
+FONT_CACHE = {}
+
+def get_font(size=60):
+    """加载支持 emoji 的字体，优先使用系统字体"""
+    if size in FONT_CACHE:
+        return FONT_CACHE[size]
+
+    font_paths = [
+        # macOS
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/STHeiti Light.ttc",
+        "/System/Library/Fonts/Hiragino Sans GB.ttc",
+        "/Library/Fonts/Arial Unicode.ttf",
+        # Linux
+        "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        # Windows
+        "C:/Windows/Fonts/seguiemj.ttf",
+    ]
+
+    from PIL import ImageFont
+    for path in font_paths:
+        try:
+            font = ImageFont.truetype(path, size)
+            FONT_CACHE[size] = font
+            print(f"[字体] 加载成功: {path}")
+            return font
+        except Exception:
+            continue
+
+    font = ImageFont.load_default(size)
+    print(f"[字体] 警告：未找到 emoji 字体，使用默认位图字体")
+    FONT_CACHE[size] = font
+    return font
 
 def hex_to_rgb(h):
     h = h.lstrip('#')
     return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
 
-def get_font(sz):
-    for p in ["/System/Library/Fonts/PingFang.ttc",
-              "/System/Library/Fonts/STHeiti Medium.ttc",
-              "/System/Library/Fonts/Helvetica.ttc",
-              "/System/Library/Fonts/Arial.ttf"]:
-        if os.path.exists(p):
-            try: return ImageFont.truetype(p, sz)
-            except: pass
-    return ImageFont.load_default(sz)
+def log(msg, level="INFO"):
+    print(f"[{level}] {msg}")
 
-def wrap_text(text, font, max_w):
-    words = text.split()
-    lines, current = [], ""
-    for w in words:
-        test = (current + " " + w).strip()
-        if sum(font.getbbox(c)[2] for c in test) <= max_w:
-            current = test
-        else:
-            if current: lines.append(current)
-            current = w
-    if current: lines.append(current)
-    return lines
+# ── 解析 ───────────────────────────────────────────────────
 
-def apply_theme_bg(draw, theme_key):
-    t = THEMES.get(theme_key, THEMES['cyberpunk'])
-    draw.rectangle([0, 0, W, H], fill=hex_to_rgb(t['bg']) + (255,))
-
-def apply_circular_mask(img):
-    mask = Image.new("L", (W, H), 0)
-    mdraw = ImageDraw.Draw(mask)
-    for r in range(CIRCLE_RADIUS_BLUR, -1, -1):
-        alpha = int(255 * (1 - r / CIRCLE_RADIUS_BLUR))
-        mdraw.ellipse([CIRCLE_CX-CIRCLE_R-r, CIRCLE_CY-CIRCLE_R-r,
-                        CIRCLE_CX+CIRCLE_R+r, CIRCLE_CY+CIRCLE_R+r],
-                       fill=min(255, alpha))
-    blurred = mask.filter(ImageFilter.GaussianBlur(CIRCLE_RADIUS_BLUR))
-    img.putalpha(blurred)
-
-def text_bottom_draw(draw, text, theme_key, font_sz=110):
-    theme = THEMES[theme_key]
-    font = get_font(font_sz)
-    lines = wrap_text(text, font, W - 2*TEXT_MARGIN)
-    line_h = int(font_sz * 1.4)
-    total_h = len(lines) * line_h
-    # 底部对齐
-    y_start = H - TEXT_BOTTOM - total_h
-    for i, line in enumerate(lines):
-        tw = sum(font.getbbox(c)[2] for c in line)
-        draw.text(((W - tw)//2, y_start + i*line_h),
-                  line, fill=hex_to_rgb(theme['text'])+(255,), font=font)
-    return y_start - 8, y_start
-
-def label_draw(draw, label, theme_key, top_y):
-    theme = THEMES[theme_key]
-    font = get_font(22)
-    lw = sum(font.getbbox(c)[2] for c in label)
-    draw.text(((W - lw)//2, top_y - 36), label,
-             fill=hex_to_rgb(theme['primary'])+(180,), font=font)
-
-# ── 词汇表函数 ──────────────────────────────────────────────
-
-def _draw_brain(draw, theme, cx, cy, w, h):
-    p = hex_to_rgb(theme['primary'])
-    for i, (r_ratio, bc) in enumerate([(0.9,(60,10,100)),(0.7,(40,5,80)),(0.5,(25,3,60))]):
-        rx, ry = w*r_ratio*0.5, w*r_ratio*0.5*0.75
-        draw.ellipse([cx-rx, cy-ry, cx+rx, cy+ry], fill=bc+(255,))
-    for i in range(8, 0, -1):
-        draw.ellipse([cx-i*12, cy-i*12, cx+i*12, cy+i*12], fill=p+(max(5,20-i*2),))
-
-def _draw_neural_network(draw, theme, cx, cy, w, h):
-    p = hex_to_rgb(theme['primary'])
-    s = hex_to_rgb(theme['secondary'])
-    offsets = [(-0.3,-0.25),(0.3,-0.25),(-0.45,0),(0,0),(0.45,0),(-0.3,0.25),(0.3,0.25)]
-    nodes = [(cx+ox*w, cy+oy*h) for ox,oy in offsets]
-    for i,(nx,ny) in enumerate(nodes):
-        for j,(mx,my) in enumerate(nodes):
-            if i<j and ((nx-mx)**2+(ny-my)**2)**0.5 < w*0.5:
-                draw.line([(nx,ny),(mx,my)], fill=s+(60,), width=2)
-    for nx, ny in nodes:
-        for ring in range(3,0,-1):
-            draw.ellipse([nx-ring*5,ny-ring*5,nx+ring*5,ny+ring*5], fill=s+(30-ring*8,))
-        draw.ellipse([nx-7,ny-7,nx+7,ny+7], fill=(255,255,255,200))
-        draw.ellipse([nx-4,ny-4,nx+4,ny+4], fill=s+(200,))
-
-def _draw_terminal(draw, theme, cx, cy, w, h):
-    p = hex_to_rgb(theme['primary'])
-    ww, wh = int(w*0.95), int(h*0.85)
-    tx, ty = cx-ww//2, cy-wh//2
-    draw.rectangle([tx,ty,tx+ww,ty+wh], fill=(15,15,28,255))
-    draw.rectangle([tx,ty,tx+ww,ty+wh], outline=p+(180,), width=2)
-    th = int(wh*0.12)
-    draw.rectangle([tx,ty,tx+ww,ty+th], fill=(30,30,50,255))
-    for bx,col in [(tx+16,(255,80,80,200)),(tx+36,(255,200,80,200)),(tx+56,(80,200,100,200))]:
-        draw.ellipse([bx-6,ty+th//2-6,bx+6,ty+th//2+6], fill=col)
-    draw.rectangle([tx+20,ty+th+int(wh*0.15),tx+60,ty+th+int(wh*0.15)+20], fill=p+(180,))
-
-def _draw_lightning(draw, theme, cx, cy, w, h):
-    p = hex_to_rgb(theme['primary'])
-    for angle in range(0, 360, 10):
-        rad = math.radians(angle)
-        x1,y1 = int(cx+w*0.15*math.cos(rad)), int(cy+w*0.15*math.sin(rad))
-        x2,y2 = int(cx+w*0.48*math.cos(rad)), int(cy+w*0.48*math.sin(rad))
-        draw.line([(x1,y1),(x2,y2)], fill=p+(40,), width=2)
-    draw.text((cx-int(w*0.2),cy-int(h*0.25)), "⚡",
-              fill=(255,255,255,255), font=get_font(int(min(w,h)*0.5)))
-
-def _draw_heart(draw, theme, cx, cy, w, h):
-    draw.text((cx-int(w*0.25),cy-int(h*0.35)), "❤",
-              fill=(255,60,90,255), font=get_font(int(min(w,h)*0.7)))
-
-def _draw_equals_sign(draw, theme, cx, cy, w, h):
-    draw.text((cx-int(w*0.2),cy-int(h*0.2)), "=",
-              fill=(255,255,255,255), font=get_font(int(min(w,h)*0.6)))
-
-def _draw_question_mark(draw, theme, cx, cy, w, h):
-    p = hex_to_rgb(theme['primary'])
-    for i in range(5, 0, -1):
-        draw.ellipse([cx-w*0.4-i*3,cy-h*0.35-i*3,cx+w*0.4+i*3,cy+h*0.35+i*3],
-                     fill=p+(12-i*2,))
-    draw.ellipse([cx-w*0.4,cy-h*0.35,cx+w*0.4,cy+h*0.35],
-                 fill=(40,30,80,255), outline=p+(200,), width=2)
-    draw.text((cx-int(w*0.12),cy-int(h*0.2)), "?",
-              fill=p+(255,), font=get_font(int(min(w,h)*0.5)))
-
-def _draw_eraser(draw, theme, cx, cy, w, h):
-    ew, eh = int(w*0.6), int(h*0.3)
-    draw.rectangle([cx-ew//2,cy-eh//2,cx+ew//2,cy+eh//2],
-                   fill=(220,180,140,255), outline=(100,80,60,255), width=2)
-    for i,(ox,oy) in enumerate([(-w*0.3,0),(0,0),(w*0.2,h*0.15)]):
-        draw.ellipse([cx+ox-w*0.08,cy+oy-h*0.08,cx+ox+w*0.08,cy+oy+h*0.08],
-                     fill=hex_to_rgb(theme['primary'])+(max(30,180-i*50),))
-
-def _draw_checkmark(draw, theme, cx, cy, w, h):
-    for i in range(5, 0, -1):
-        draw.ellipse([cx-w*0.3-i*3,cy-h*0.3-i*3,cx+w*0.3+i*3,cy+h*0.3+i*3],
-                     fill=(0,255,136,15-i*2,))
-    draw.text((cx-int(w*0.2),cy-int(h*0.25)), "✓",
-              fill=(0,255,136,255), font=get_font(int(min(w,h)*0.5)))
-
-def _draw_math_canvas(draw, theme, cx, cy, w, h):
-    cw, ch = int(w*0.9), int(h*0.8)
-    draw.rectangle([cx-cw//2,cy-ch//2,cx+cw//2,cy+ch//2], fill=(10,10,10,255))
-    mf = get_font(int(min(w,h)*0.18))
-    for (sym,ox) in [("5",-w*0.2),("+",-w*0.08),("3",w*0.04),("=","=" and w*0.16)]:
-        col = (255,200,80,255) if sym == "=" else (255,255,255,255)
-        draw.text((cx+ox-int(w*0.06),cy-int(h*0.15)), sym, fill=col, font=mf)
-
-ELEMENT_VOCAB = {
-    "brain": _draw_brain, "ai大脑": _draw_brain, "ai计算": _draw_brain,
-    "神经网络": _draw_neural_network, "neural_network": _draw_neural_network,
-    "terminal": _draw_terminal, "终端窗口": _draw_terminal,
-    "lightning": _draw_lightning, "闪电": _draw_lightning,
-    "heart": _draw_heart, "红心": _draw_heart,
-    "equals_sign": _draw_equals_sign, "等号": _draw_equals_sign,
-    "question_mark": _draw_question_mark, "问号": _draw_question_mark,
-    "eraser": _draw_eraser, "橡皮擦": _draw_eraser,
-    "checkmark": _draw_checkmark, "对勾": _draw_checkmark,
-    "math_canvas": _draw_math_canvas, "canvas": _draw_math_canvas, "画布": _draw_math_canvas,
-}
-
-def draw_visual(draw, visual_elements, theme_key):
-    theme = THEMES[theme_key]
-    cx, cy = W//2, H//2-60
-    area_w, area_h = W*0.8, H*0.6
-    for elem in visual_elements:
-        fn = ELEMENT_VOCAB.get(elem)
-        if fn: fn(draw, theme, cx, cy, area_w*0.6, area_h*0.6)
-
-# ── 主函数 ──────────────────────────────────────────────────
+def _parse_list(s):
+    """Parse a simple unquoted comma-separated list: [a, b, c]"""
+    s = s.strip()
+    if s.startswith('[') and s.endswith(']'):
+        s = s[1:-1]
+    return [x.strip() for x in s.split(',') if x.strip()]
 
 def parse_prompt_file(path):
+    """解析 prompts/*.md，返回 (name, copy, visual_elements, style_keyword, theme)"""
     with open(path) as f:
         content = f.read()
     front = {}
+    in_front = False
     for line in content.split('\n'):
-        if line.strip() == '---': break
-        if ':' in line:
+        stripped = line.strip()
+        if stripped == '---':
+            if not in_front: in_front = True
+            else: break
+            continue
+        if in_front and ':' in line:
             k, v = line.split(':', 1)
             front[k.strip()] = v.strip().strip('"').strip("'")
-    name = front.get('name', os.path.basename(path).replace('.md',''))
-    copy = front.get('copy', '')
-    try:    v_elems = eval(front.get('visual_elements', '[]'))
-    except: v_elems = []
-    theme = front.get('theme', 'cyberpunk')
-    return name, copy, v_elems, theme
+    name    = front.get('name', os.path.basename(path).replace('.md',''))
+    copy    = front.get('copy', '')
+    try:    visual_elements = _parse_list(front.get('visual_elements', '[]'))
+    except: visual_elements = []
+    try:    style_keyword = _parse_list(front.get('style_keyword', '[]'))
+    except: style_keyword = []
+    theme   = front.get('theme', 'cyberpunk')
+    return name, copy, visual_elements, style_keyword, theme
 
-def create_sticker(text, output_path, visual_elements, theme_key, font_size=110):
-    bg_layer = Image.new("RGBA", (W,H), (0,0,0,0))
-    draw_bg = ImageDraw.Draw(bg_layer)
-    apply_theme_bg(draw_bg, theme_key)
-    draw_visual(draw_bg, visual_elements, theme_key)
-    if theme_key in CIRCULAR_THEMES:
-        apply_circular_mask(bg_layer)
+# ── 核心生成 ───────────────────────────────────────────────
 
-    text_layer = Image.new("RGBA", (W,H), (0,0,0,0))
-    draw_txt = ImageDraw.Draw(text_layer)
-    tt, tb = text_bottom_draw(draw_txt, text, theme_key, font_size)
-    label_draw(draw_txt, "WARP", theme_key, tt)
+def pil_fallback(name, copy, visual_elements, theme_key, output_path):
+    """PIL 本地生成（兜底方案）"""
+    from PIL import Image, ImageDraw, ImageFont
 
-    canvas = Image.alpha_composite(bg_layer, text_layer)
-    canvas.save(output_path, "PNG")
+    theme = THEMES.get(theme_key, THEMES['cyberpunk'])
+    primary = hex_to_rgb(theme['primary'])
+    secondary = hex_to_rgb(theme['secondary'])
+
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    bg_rgb = hex_to_rgb(theme['bg'])
+    draw.rectangle([0, 0, W, H], fill=bg_rgb + (255,))
+
+    cx, cy = W // 2, H // 2 - 60
+
+    # elem_fns：程序化绘制函数（非 emoji 纯符号元素）
+    # emoji 元素（coffee, rocket 等）统一通过 get_font() 渲染
+    elem_fns = {
+        # FOCUS 元素（几何绘制）
+        'brain': lambda: draw.ellipse([cx-150, cy-150, cx+150, cy+150], fill=primary + (80,)),
+        'neural_network': lambda: (
+            [draw.ellipse([cx-200+nx*80, cy-100+ny*60, cx-200+nx*80+24, cy-100+ny*60+24],
+              fill=primary+(180,) if (nx+ny)%2==0 else secondary+(180,))
+             for nx in range(6) for ny in range(4)]
+        ),
+        'terminal': lambda: draw.rectangle([cx-300, cy-175, cx+300, cy+175], fill=(15,15,28,255), outline=primary+(200,), width=2),
+        'math_canvas': lambda: draw.rectangle([cx-380, cy-250, cx+380, cy+250], fill=(10,10,10,255)),
+        'ai_chip': lambda: draw.rectangle([cx-120, cy-120, cx+120, cy+120], fill=primary+(60,), outline=primary+(200,), width=3),
+        'spotlight': lambda: (
+            draw.ellipse([cx-200, cy-250, cx+200, cy+250], fill=(255,255,200,25)),
+            draw.ellipse([cx-100, cy-150, cx+100, cy+150], fill=(255,255,200,40)),
+        ),
+        'network_node': lambda: (
+            [draw.ellipse([cx-180+nx*90, cy-90+ny*70, cx-180+nx*90+20, cy-90+ny*70+20],
+              fill=primary+(200,))
+             for nx in range(5) for ny in range(3)]
+        ),
+        'button': lambda: draw.rectangle([cx-150, cy-60, cx+150, cy+60], fill=primary+(200,), outline=primary+(255,), width=3),
+        # 符号元素（通过 Unicode/emoji 渲染）
+        'lightning': lambda: draw.text((cx-50, cy-80), "⚡", fill=(255,255,255,255), font=get_font(80)),
+        'heart': lambda: draw.text((cx-60, cy-60), "❤", fill=(255,60,90,255), font=get_font(80)),
+        'equals_sign': lambda: draw.text((cx-50, cy-50), "=", fill=(255,255,255,255), font=get_font(80)),
+        'question_mark': lambda: draw.text((cx-30, cy-40), "?", fill=primary+(255,), font=get_font(80)),
+        'eraser': lambda: draw.text((cx-40, cy-40), "🧹", fill=(200,150,100,255), font=get_font(60)),
+        'checkmark': lambda: draw.text((cx-40, cy-40), "✓", fill=(0,255,136,255), font=get_font(80)),
+        # 非 emoji 纯符号绘制
+        'code': lambda: (
+            draw.rectangle([cx-300, cy-175, cx+300, cy+175], fill=(15,15,28,255), outline=primary+(200,), width=2),
+            draw.text((cx-240, cy-100), ">>>", fill=(0,255,136,255), font=get_font(48)),
+            draw.text((cx-240, cy-40), "def f(x):", fill=(0,200,255,255), font=get_font(40)),
+            draw.text((cx-240, cy+20), "    return x", fill=(150,150,150,255), font=get_font(36)),
+        ),
+        'algorithm': lambda: (
+            # 流程图样式
+            draw.rectangle([cx-260, cy-200, cx-60, cy-120], fill=primary+(60,), outline=primary+(200,), width=2),
+            draw.rectangle([cx-60, cy-200, cx+140, cy-120], fill=secondary+(60,), outline=secondary+(200,), width=2),
+            draw.rectangle([cx-160, cy-60, cx+40, cy+20], fill=primary+(60,), outline=primary+(200,), width=2),
+            draw.text((cx-200, cy-170), "IN", fill=(255,255,255,255), font=get_font(32)),
+            draw.text((cx-10, cy-170), "PROC", fill=(255,255,255,255), font=get_font(32)),
+            draw.text((cx-120, cy-30), "OUT", fill=(255,255,255,255), font=get_font(32)),
+        ),
+        'function': lambda: (
+            draw.text((cx-200, cy-40), "ƒ(x) =", fill=primary+(255,), font=get_font(72)),
+        ),
+        'variable': lambda: (
+            draw.text((cx-120, cy-40), "x =", fill=primary+(255,), font=get_font(72)),
+            draw.text((cx+20, cy-30), "???", fill=secondary+(255,), font=get_font(56)),
+        ),
+        'bio': lambda: (
+            # DNA 双螺旋示意
+            [(
+                draw.ellipse([cx-160+ny*40-8, cy-120+ny*30-8, cx-160+ny*40+8, cy-120+ny*30+8], fill=primary+(180,)),
+                draw.ellipse([cx+160-ny*40-8, cy-120+ny*30-8, cx+160-ny*40+8, cy-120+ny*30+8], fill=secondary+(180,)),
+                draw.line([cx-160+ny*40, cy-120+ny*30, cx+160-ny*40, cy-120+ny*30], fill=primary+(80,), width=2),
+            ) for ny in range(9)],
+        ),
+        'secret': lambda: (
+            draw.text((cx-140, cy-50), "***", fill=(255,215,0,255), font=get_font(80)),
+            draw.text((cx-200, cy+50), "CLASSIFIED", fill=(255,100,100,255), font=get_font(28)),
+        ),
+    }
+
+    # 渲染所有 visual_elements
+    for elem in visual_elements:
+        fn = elem_fns.get(elem)
+        if fn:
+            fn()
+        else:
+            # 兜底：尝试作为 emoji 字符渲染（覆盖80+词汇表中所有 emoji 元素）
+            # 从 visual_elements 直接获取 emoji 映射
+            emoji_map = {
+                "brain": "🧠", "ai大脑": "🧠", "ai计算": "🧠",
+                "神经网络": "🧠", "neural_network": "🧠",
+                "terminal": "💻", "终端窗口": "💻",
+                "lightning": "⚡", "闪电": "⚡", "zap": "⚡",
+                "equals_sign": "＝", "等号": "＝",
+                "question_mark": "？", "问号": "？",
+                "eraser": "🧹", "橡皮擦": "🧹",
+                "checkmark": "✓", "对勾": "✓",
+                "math_canvas": "📐", "canvas": "📐", "画布": "📐",
+                "ai_chip": "🤖", "芯片": "🤖", "robot": "🤖",
+                "spotlight": "🔦", "光晕": "🔦",
+                "network_node": "🔗", "网络节点": "🔗", "link": "🔗",
+                "button": "🔘", "按钮": "🔘",
+                "code": "💻", "cpu": "🖥️", "server": "🗄️",
+                "database": "🗃️", "cloud": "☁️", "data": "📊",
+                "algorithm": "🔣", "function": "ƒ", "variable": "x",
+                "debug": "🐛", "deploy": "🚀",
+                "heart": "❤", "红心": "❤",
+                "thumbs_up": "👍", "clap": "👏",
+                "pray": "🙏", "muscle": "💪",
+                "thinking": "🤔", "eyes": "👀",
+                "trophy": "🏆", "medal": "🏅", "crown": "👑",
+                "star": "⭐", "fire": "🔥", "hundred": "💯",
+                "laugh": "😂", "cry": "😭", "angry": "😡",
+                "cool": "😎", "shy": "😳", "sleeping": "😴",
+                "rocket": "🚀", "alarm": "⏰", "bell": "🔔",
+                "megaphone": "📢", "wrench": "🔧", "hammer": "🔨",
+                "scissors": "✂️", "pencil": "✏️", "book": "📖",
+                "lightbulb": "💡", "bulb": "💡",
+                "envelope": "✉️", "gift": "🎁",
+                "tada": "🎉", "balloon": "🎈", "confetti": "🎊",
+                "coffee": "☕", "tea": "🍵", "beer": "🍺",
+                "cocktail": "🍸", "wine": "🍷",
+                "pizza": "🍕", "rice": "🍚", "fruit": "🍎",
+                "cake": "🎂", "cookie": "🍪", "bread": "🍞",
+                "phone": "📱", "camera": "📷", "clipboard": "📋",
+                "chart": "📈", "calendar": "📅",
+                "key": "🔑", "lock": "🔒",
+                "folder": "📁", "file": "📄",
+                "email": "📧", "call": "📞",
+                "microphone": "🎤", "video": "🎬", "tv": "📺",
+                "clock": "⏱️", "hourglass": "⏳",
+                "pen": "🖊️", "ruler": "📏",
+                "paperclip": "📎", "stamp": "📮",
+                "inbox": "📥", "outbox": "📤",
+                "earth": "🌏", "moon": "🌙", "sun": "☀️",
+                "rainbow": "🌈", "snowflake": "❄️",
+                "wave": "🌊", "anchor": "⚓",
+                "airplane": "✈️", "car": "🚗", "bicycle": "🚲",
+                "map": "🗺️", "compass": "🧭",
+                "flag": "🚩", "satellite": "🛰️",
+                "telescope": "🔭", "microscope": "🔬",
+                "money": "💰", "gem": "💎",
+                "love_letter": "💌",
+                "warning": "⚠️", "no_entry": "⛔",
+                "busy": "🉐", "free": "🆓", "secret": "🤫",
+                "goal": "🎯", "puzzle": "🧩",
+                "music": "🎵", "headphones": "🎧",
+                "sound": "🔊", "mute": "🔇",
+                "eye": "👁️", "ear": "👂", "nose": "👃",
+                "footprints": "👣",
+                "bone": "🦴", "microbe": "🦠",
+                "pill": "💊", "syringe": "💉",
+                "thermometer": "🌡️",
+                "magnet": "🧲", "gear": "⚙️",
+                "atom": "⚛️", "dna": "🧬",
+                "biohazard": "☣️", "radioactive": "☢️",
+                "bio": "🌱",
+                "four_leaf": "🍀", "maple": "🍁",
+                "cherry": "🌸", "tulip": "🌷",
+                "rose": "🌹", "hibiscus": "🌺",
+                "shell": "🐚", "feather": "🪶",
+                "sparkle": "✨", "diamond": "💠",
+                "fleur": "⚜️", "comet": "☄️",
+            }
+            emoji = emoji_map.get(elem)
+            if emoji:
+                draw.text((cx - 50, cy - 60), emoji, fill=(255, 255, 255, 255), font=get_font(80))
+
+    # 渲染底部文案
+    font = get_font(60)
+    tw = sum(font.getbbox(c)[2] for c in copy)
+    th = int(60 * 1.4)
+    tx = (W - tw) // 2
+    ty = H - th - 30
+    draw.text((tx, ty), copy, fill=hex_to_rgb(theme['text']) + (255,), font=font)
+
+    img.save(output_path, "PNG")
+    log(f"[PIL] {name} 生成成功", "OK")
+    return True
+
+
+# ── 主入口 ───────────────────────────────────────────────
 
 def main():
-    ap = argparse.ArgumentParser(description='PIL 兜底生成器')
-    ap.add_argument('--input',  required=True)
-    ap.add_argument('--output', required=True)
-    ap.add_argument('--theme',  default='cyberpunk')
+    ap = argparse.ArgumentParser(description='PIL 本地兜底生成器（纯离线）')
+    ap.add_argument('--input',  required=True, help='prompts/ 目录路径')
+    ap.add_argument('--output', required=True, help='输出目录路径')
+    ap.add_argument('--theme',  default='cyberpunk', help='主题风格')
     args = ap.parse_args()
-    os.makedirs(args.output, exist_ok=True)
 
-    files = sorted(glob.glob(f"{args.input}/*.md"))
-    print(f"主题: {args.theme} | 文件数: {len(files)}")
+    input_path = args.input
+    if os.path.isfile(input_path):
+        files = [input_path]
+    elif os.path.isdir(input_path):
+        files = sorted(glob.glob(f"{input_path}/*.md"))
+        if not files:
+            log(f"未找到 .md 文件: {input_path}", "ERROR")
+            return
+    else:
+        log(f"输入路径不存在: {input_path}", "ERROR")
+        return
+
+    os.makedirs(args.output, exist_ok=True)
+    log(f"主题: {args.theme} | 文件数: {len(files)}")
+
     ok = 0
     for pf in files:
-        name, copy, v_elems, theme = parse_prompt_file(pf)
-        out = os.path.join(args.output, os.path.basename(pf).replace('.md','.png'))
+        name, copy, v_elems, s_kw, theme = parse_prompt_file(pf)
+        out = os.path.join(args.output, os.path.basename(pf).replace('.md', '.png'))
+
         try:
-            create_sticker(copy, out, v_elems, theme)
-            print(f"✓ {name}")
+            pil_fallback(name, copy, v_elems, args.theme, out)
             ok += 1
+            print(f"✓ {name}")
         except Exception as e:
-            print(f"✗ {name}: {e}")
-    print(f"\n✅ {ok}/{len(files)} 张贴图 | PIL兜底")
+            log(f"[PIL] {name} 失败: {e}", "ERROR")
+            print(f"✗ {name}")
+
+    print(f"\n✅ {ok}/{len(files)} 张贴图生成完成")
+    print(f"📦 {args.output}")
+
 
 if __name__ == '__main__':
     main()

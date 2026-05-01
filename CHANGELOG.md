@@ -1,5 +1,49 @@
 # Changelog - wechat-sticker-skill
 
+## v4.3.0 (2026-05-01) - 三段式生成器全面完善
+
+### generate_frames.py 核心修复
+
+**T-1 修复**：
+- 新增 `seedream` provider（火山引擎 doubao-seedream-5-0-260128），支持 `VOLCENGINE_API_KEY` / `SEEDREAM_API_KEY` 环境变量
+- 新增 `_call_ai_provider()` 统一 HTTP 调用函数：429 自动重试（10s 等待，最多3次）、超时/网络错误降级、401/402/403 认证错误跳过
+- Provider 优先级：dashscope → seedream → minimax → openai
+
+**T-3 修复**：
+- `elem_fns` 扩充至 22 个绘制函数，新增 `code`（代码窗口）、`algorithm`（流程图）、`function`（ƒ(x)=）、`variable`（x=???）、`bio`（DNA双螺旋）、`secret`（*** + CLASSIFIED）
+- 新增 `emoji_map` 兜底渲染逻辑，覆盖 80+ 词汇表所有 emoji 元素
+- 移除原有的 `if True else None` 冗余表达式
+
+### scripts/pil_fallback.py 独立脚本新建
+
+**T-2 新建**：
+- 创建独立 `pil_fallback.py` 脚本，与 `generate_frames.py` 解耦
+- 支持 `--input/--output/--theme` 参数
+- 内嵌完整 `elem_fns` + `emoji_map`，覆盖全部 80+ 词汇
+- 可独立运行：`python3 scripts/pil_fallback.py --input prompts/ --output assets/ --theme cyberpunk`
+
+### image-generation.md 文档修复
+
+**T-4 修复**：
+- 修正标题从"导出 PNG"改为"导出 GIF（带动画）"
+- 添加说明：`npx remotion still` 导出单帧 PNG，`npx remotion render` 导出多帧 GIF
+
+### StickerContent.tsx 清理
+
+**T-5 修复**：
+- 移除外层组件中冗余的 `useCurrentFrame()` 调用
+- 注释更新为"不直接参与动画"，明确职责划分
+
+### 演示项目
+
+**T-6 新建**：
+- 新建 `demo/ai-coding-assistant/` 完整贴图项目（6张贴图）
+- `content-analysis.md` + `sticker-manifest.md` + `prompts/01-06.md` + `copy.md` + `assets/` 完整闭环
+- 覆盖场景：代码秒写 / Bug秒解 / 一键部署 / 代码审查通过 / 摸鱼被发现 / 下班收工
+- PIL 生成验证通过：6/6 张贴图全部成功
+
+---
+
 ## v4.2.0 (2026-05-01) - Remotion 模板修复
 
 ### StickerContent.tsx 架构修复
