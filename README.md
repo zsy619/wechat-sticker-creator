@@ -83,20 +83,32 @@
 生成的表情包项目会保存在以下目录结构中：
 
 ```
-wechat-stickers/{主题-slug}/
-├── project.yaml              # 项目元数据
-├── content-analysis.md       # 内容聚合分析文档
-├── sticker-manifest.md       # 贴图设计清单
-├── copy.md                   # 推广文案文档（包含文案+标签）
-├── token-stats.md            # Token输入输出统计
-├── prompts/                  # 贴图提示词目录
-│   ├── 01-{贴图名}.md        # 每张贴图一个文件
-│   └── ...
-├── assets/                   # 贴图图片目录
-│   ├── 01-{贴图名}.png       # 每张贴图一张图片 (500×500)
-│   └── ...
-└── output/                   # 最终输出目录
-    └── stickers-{slug}.zip   # ZIP 打包文件（可选）
+wechat-stickers/{项目根目录}/                              ← 用户项目目录
+│
+├── prompts/                             ← 贴图提示词源文件（输入）
+│   ├── 01-贴图1.md
+│   └── 02-贴图2.md
+│
+├── remotion-sticker/      ← 阶段二 Remotion 项目（每张贴图一个帧）
+│   ├── package.json                     ← @remotion/cli 4.0.448, remotion 4.0.448
+│   └── src/
+│       ├── index.tsx                    ← registerRoot 入口
+│       ├── StickerComponent.tsx          ← 外层组件（返回 <Composition>）
+│       ├── StickerContent.tsx           ← 内层组件（含 useCurrentFrame + 动画）
+│       └── styles.css
+│
+├── assets/                              ← 非指定风格的统一 PNG（可选）
+├── assets-cyberpunk/                    ← cyberpunk 风格 PNG
+├── assets-kawaii/                       ← kawaii 风格 PNG
+├── assets-neon/                         ← neon 风格 PNG
+├── assets-retro/                        ← retro 风格 PNG
+├── assets-hand-drawn/                   ← hand-drawn 风格 PNG
+├── assets-minimal/                      ← minimal 风格 PNG
+├── assets-meme/                         ← meme 风格 PNG
+│
+├── content-analysis.md                  ← 内容聚合分析文档
+├── sticker-manifest.md                  ← 贴图设计清单
+└── stickers.zip                        ← 最终打包（可选）
 ```
 
 ## 命名规则
@@ -353,10 +365,10 @@ pip3 install Pillow
 ```bash
 # 方法1：复制到用户 skills 目录
 mkdir -p ~/.agents/skills
-cp -r . ~/.agents/skills/wechat-sticker-creator
+cp -r . ~/.agents/skills/wechat-sticker-skill
 
 # 方法2：创建符号链接（推荐，修改后自动同步）
-ln -sf "$(pwd)" ~/.agents/skills/wechat-sticker-creator
+ln -sf "$(pwd)" ~/.agents/skills/wechat-sticker-skill
 ```
 
 ### Claude Code
@@ -366,11 +378,11 @@ ln -sf "$(pwd)" ~/.agents/skills/wechat-sticker-creator
 ```bash
 # 安装到用户目录
 mkdir -p ~/.claude/skills
-git clone https://github.com/zsy619/wechat-sticker-skill.git ~/.claude/skills/wechat-sticker-creator
+git clone https://github.com/zsy619/wechat-sticker-skill.git ~/.claude/skills/wechat-sticker-skill
 
 # 或手动复制
-mkdir -p ~/.claude/skills/wechat-sticker-creator
-cp -r . ~/.claude/skills/wechat-sticker-creator/
+mkdir -p ~/.claude/skills/wechat-sticker-skill
+cp -r . ~/.claude/skills/wechat-sticker-skill/
 ```
 
 ### Cursor IDE
@@ -380,10 +392,10 @@ cp -r . ~/.claude/skills/wechat-sticker-creator/
 ```bash
 # 方法1：复制到 Cursor skills 目录
 mkdir -p ~/.cursor/skills
-cp -r . ~/.cursor/skills/wechat-sticker-creator
+cp -r . ~/.cursor/skills/wechat-sticker-skill
 
 # 方法2：使用 Cursor CLI（如有）
-cursor --install-skill wechat-sticker-creator
+cursor --install-skill wechat-sticker-skill
 ```
 
 ### Windsurf AI
@@ -393,7 +405,7 @@ cursor --install-skill wechat-sticker-creator
 ```bash
 # 复制到 Windsurf skills 目录
 mkdir -p ~/.windsurf/skills
-cp -r . ~/.windsurf/skills/wechat-sticker-creator
+cp -r . ~/.windsurf/skills/wechat-sticker-skill
 ```
 
 ### Continue (VSCode/JetBrains 插件)
@@ -405,7 +417,7 @@ cp -r . ~/.windsurf/skills/wechat-sticker-creator
 {
   "skills": [
     {
-      "name": "wechat-sticker-creator",
+      "name": "wechat-sticker-skill",
       "description": "根据链接、主题或内容自动生成微信表情包",
       "repo": "https://github.com/zsy619/wechat-sticker-skill"
     }

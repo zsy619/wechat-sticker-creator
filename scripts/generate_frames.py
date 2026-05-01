@@ -10,7 +10,7 @@ Usage:
     python3 generate_frames.py --input prompts/ --output assets/ --theme cyberpunk --mode pil
 """
 
-import os, sys, json, time, glob, subprocess, argparse
+import os, sys, json, time, glob, subprocess, argparse, re
 import urllib.request, urllib.error
 
 # ── 常量 ───────────────────────────────────────────────────
@@ -193,15 +193,17 @@ def check_remotion_available():
         return False
 
 def generate_remotion_gif(name, copy, visual_elements, theme_key, output_path):
-    """为单张贴图创建 Remotion 项目并导出 PNG。"""
+    """为单张贴图创建 Remotion 项目并导出 GIF。"""
     if not check_remotion_available():
         raise RuntimeError("npx remotion 不可用")
 
     # 读取模板文件
     tmpl_base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "remotion", "template")
 
-    # Remotion 项目放在当前项目目录下（非 /tmp）
-    project_dir = os.path.join(os.path.dirname(os.path.abspath(output_path)), ".remotion-sticker-" + name.replace(" ", "-"))
+    # Remotion 项目统一放在项目根目录：wechat-stickers/{project}/remotion-sticker/
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(output_path)))
+    name_slug = os.path.basename(output_path).replace('.png','').replace('.gif','')
+    project_dir = os.path.join(project_root, "remotion-sticker", name_slug)
     os.makedirs(project_dir + "/src", exist_ok=True)
 
     theme = THEMES.get(theme_key, THEMES["cyberpunk"])

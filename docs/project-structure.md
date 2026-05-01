@@ -3,7 +3,6 @@
 本文档描述贴图生成项目的完整目录结构。
 
 ```
-remotion/{sticker-name}/
 wechat-stickers/{项目根目录}/                              ← 用户项目目录
 │
 ├── prompts/                             ← 贴图提示词源文件（输入）
