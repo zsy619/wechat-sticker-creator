@@ -1,5 +1,36 @@
 # Changelog - wechat-sticker-skill
 
+## v4.2.0 (2026-05-01) - Remotion 模板修复
+
+### StickerContent.tsx 架构修复
+
+**问题**：原模板外层组件直接调用 `useCurrentFrame()` 但实际动画逻辑在子组件中，职责不清。
+
+**修复**：
+- `StickerScene` 内层组件独立使用 `useCurrentFrame()`，通过 `frameOffset` 修正本地帧
+- 外层 `StickerContent` 保持 `useCurrentFrame()` 调用以满足 Remotion 要求，但不直接参与动画
+- `localFrame = frame - frameOffset` 确保每张贴图从第0帧开始播放
+
+### 字体大小修复
+
+**问题**：底部文案 `fontSize: 150` 对 1080px 宽度过大。
+
+**修复**：调整为 `fontSize: 90`（竖屏规范 ≤96px）。
+
+### 圆形遮罩添加
+
+**问题**：cyberpunk/neon/kawaii 主题缺少圆形边框效果。
+
+**修复**：添加圆形遮罩层，带 `boxShadow` 霓虹光效。
+
+### text-shadow 修复
+
+**问题**：原 `neonTextShadow` 函数使用模板字符串插值 `${PRIMARY}`，在某些场景下可能出现解析错误。
+
+**修复**：改用字符串拼接，确保颜色值正确注入。
+
+---
+
 ## v4.1.0 (2026-05-01) - GIF 动画 & 字体特效
 
 ### 重大变更：PNG → GIF 动画

@@ -18,7 +18,7 @@
 
 ## 组件设计原则
 
-### 三层架构
+### 三层架构（v4.2+）
 
 ```
 registerRoot(StickerComponent)      ← 入口（第1层）
@@ -29,10 +29,21 @@ StickerComponent                   ← 外层包装（第2层）
     durationInFrames={90}         ← 动画帧数（3秒@30fps）
     fps={30}
     ↓
-StickerContent                    ← 实际视觉（第3层）
+StickerContent                    ← 中层包装（第3层）← v4.2 变更
+    ↓ 返回 JSX（含 <Sequence> 列表）
+    __SEQUENCES__ 占位符被替换为多 Sequence
+    ↓
+StickerScene                     ← 内层场景（第4层）← v4.2 新增
     ↓
     useCurrentFrame() + 动画
+    frameOffset 修正本地帧
 ```
+
+**v4.2 重大变更**：原内层组件 `StickerContent` 拆分为：
+- `StickerContent`（中层）：仅负责组合多个 `<Sequence>`，外层调用 `useCurrentFrame()` 满足 Remotion 要求
+- `StickerScene`（内层）：实际视觉渲染，通过 `frameOffset` 计算本地帧 `localFrame = frame - frameOffset`
+
+---
 
 ### 外层组件规则（StickerComponent）
 
