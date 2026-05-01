@@ -104,17 +104,14 @@
 费用 = (输入tokens + 输出tokens) / 1,000,000 × 单价（元/1M tokens）
 ```
 
-### Token 消费监控工具
+### Token 消费监控
 
-生成完成后，通过 `session_status` 查看当次 Token 消耗：
+生成完成后，通过 `session_status` 命令查看当次 Token 消耗（OpenClaw 内置命令）。
 
-```
-session_status
-```
+如果需要手动记录，在 AI 对话结束后询问模型本次 Token 消耗。
 
 ### 为什么不自动记录？
 
-- OpenClaw 的 session 统计需要通过工具调用获取
 - 每次会话结束时主动记录是最佳实践
 - 记录到 `docs/session-log.md` 便于项目复盘和成本优化
 

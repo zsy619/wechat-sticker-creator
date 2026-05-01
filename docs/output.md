@@ -5,8 +5,8 @@
 详见 [project-structure.md](project-structure.md)。
 
 - **尺寸**：1080×1440px（微信贴图标准）
-- **格式**：PNG（透明或主题背景）
-- **命名**：`{序号}-{贴图名称}.png`
+- **格式**：PNG（AI/PIL 模式）或 GIF（Remotion 模式，90帧动画）
+- **命名**：`{序号}-{贴图名称}.png` 或 `.gif`
 
 ### ZIP 打包（可选）
 

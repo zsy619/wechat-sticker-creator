@@ -98,9 +98,9 @@ mkdir -p remotion/{sticker-name}/src
 
 ```bash
 cd remotion/{sticker-name}
-npx remotion still src/Root.tsx {CompositionId} \
-  --output ../../assets/{sticker-name}.png \
-  --width 1080 --height 1440
+npx remotion render src/index.tsx StickerComponent \
+  --output ../../assets/{sticker-name}.gif \
+  --frames 0-89 --fps 30
 ```
 
 ### 异常处理

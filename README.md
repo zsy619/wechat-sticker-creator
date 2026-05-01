@@ -304,14 +304,42 @@ python3 generate_cover.py --output assets/thumb.png \
 3. **正文**: 每张贴图配合 1080×607 的 `content-*.png` 展示
 4. **缩略图**: 用于文末汇总展示，200×200 格式统一
 
+## 项目初始化
+
+当用户说"做微信贴图"后，按以下步骤创建项目：
+
+```bash
+# 1. 创建项目根目录
+mkdir -p wechat-stickers/{topic-slug}/prompts
+
+# 2. 生成 prompts/ 贴图提示词文件（由 AI 自动生成）
+# 3. 运行图片生成
+python3 generate_frames.py \
+  --input wechat-stickers/{topic-slug}/prompts/ \
+  --output wechat-stickers/{topic-slug}/assets-{theme}/ \
+  --theme cyberpunk
+```
+
+**目录结构**：
+```
+wechat-stickers/{topic-slug}/
+├── prompts/           ← 贴图提示词（AI 生成）
+├── assets-cyberpunk/  ← 生成的图片（.png 或 .gif）
+├── remotion-sticker/  ← Remotion 项目（保留，可调整动画）
+├── content-analysis.md
+└── sticker-manifest.md
+```
+
 ## 技术规格
 
-- **图片尺寸**: 500×500 像素（贴图）、1080×1440 像素（小绿书）、900×383 像素（公众号封面）
-- **文件格式**: PNG 透明背景（贴图）、JPG/PNG（封面和小绿书）
-- **贴图数量**: 最少 3 张，建议 6-12 张
-- **文案长度**: 每张贴图 20-50 字，小绿书描述最长 300 字
+- **图片尺寸**: 1080×1440 像素（微信贴图标准）、900×383 像素（公众号封面）
+- **文件格式**: PNG（AI/PIL 模式）或 GIF（Remotion 模式，90帧动画）
+- **贴图数量**: 最少 6 张，建议 8-12 张为一套
+- **文案长度**: 每张贴图核心文案 8-16 字
 - **标签数量**: 每张贴图至少 5 个标签
 - **图片生成**: AI API（优先）或 PIL 本地生成（兜底）
+
+## 安装指南
 
 ## 常见问题
 

@@ -5,9 +5,20 @@ generate_frames.py - 微信贴图三段式生成器
 优先级：AI → Remotion → PIL
 每层失败自动降级，无需人工干预。
 
+输出格式：
+  - AI 模式：PNG
+  - Remotion 模式：GIF（90帧动画）
+  - PIL 模式：PNG
+
 Usage:
     python3 generate_frames.py --input prompts/ --output assets/ --theme cyberpunk
     python3 generate_frames.py --input prompts/ --output assets/ --theme cyberpunk --mode pil
+    python3 generate_frames.py --input prompts/ --output assets/ --theme cyberpunk --mode remotion
+
+注意：
+  - 输出扩展名自动根据模式决定（.gif 或 .png）
+  - Remotion 模式需要 Node.js + npx remotion 环境
+  - PIL 模式完全离线，字体支持受限（推荐安装 Noto Color Emoji）
 """
 
 import os, sys, json, time, glob, subprocess, argparse, re
@@ -29,6 +40,43 @@ THEMES = {
 }
 
 # ── 辅助函数 ────────────────────────────────────────────────
+
+FONT_CACHE = {}  # 缓存已加载的字体
+
+def get_font(size=60):
+    """加载支持 emoji 的字体，优先使用系统字体"""
+    if size in FONT_CACHE:
+        return FONT_CACHE[size]
+    
+    # 按优先级尝试各字体
+    font_paths = [
+        # macOS
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/STHeiti Light.ttc",
+        "/System/Library/Fonts/Hiragino Sans GB.ttc",
+        "/Library/Fonts/Arial Unicode.ttf",
+        # Linux
+        "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        # Windows
+        "C:/Windows/Fonts/seguiemj.ttf",
+    ]
+    
+    from PIL import ImageFont
+    for path in font_paths:
+        try:
+            font = ImageFont.truetype(path, size)
+            FONT_CACHE[size] = font
+            log(f"[字体] 加载成功: {path}", "INFO")
+            return font
+        except Exception:
+            continue
+    
+    # 兜底：使用默认字体（无法渲染 emoji）
+    font = ImageFont.load_default(size)
+    log(f"[字体] 警告：未找到 emoji 字体，使用默认位图字体", "WARN")
+    FONT_CACHE[size] = font
+    return font
 
 def hex_to_rgb(h):
     h = h.lstrip('#')
@@ -202,17 +250,92 @@ def _get_or_create_remotion_project(project_dir, stickers, theme_key):
     text_color = theme["text"]
 
     emoji_map = {
+        # 核心 AI / 技术元素
         "brain": "🧠", "ai大脑": "🧠", "ai计算": "🧠",
         "神经网络": "🧠", "neural_network": "🧠",
         "terminal": "💻", "终端窗口": "💻",
-        "lightning": "⚡", "闪电": "⚡",
-        "heart": "❤", "红心": "❤",
+        "lightning": "⚡", "闪电": "⚡", "zap": "⚡",
         "equals_sign": "＝", "等号": "＝",
         "question_mark": "？", "问号": "？",
         "eraser": "🧹", "橡皮擦": "🧹",
         "checkmark": "✓", "对勾": "✓",
         "math_canvas": "📐", "canvas": "📐", "画布": "📐",
-        "ai_chip": "🤖", "芯片": "🤖",
+        "ai_chip": "🤖", "芯片": "🤖", "robot": "🤖",
+        "spotlight": "🔦", "光晕": "🔦",
+        "network_node": "🔗", "网络节点": "🔗", "link": "🔗",
+        "button": "🔘", "按钮": "🔘",
+        "code": "💻", "cpu": "🖥️", "server": "🗄️",
+        "database": "🗃️", "cloud": "☁️", "data": "📊",
+        "algorithm": "🔣", "function": "ƒ", "variable": "x",
+        "debug": "🐛", "deploy": "🚀",
+        # 情感 / 反应
+        "heart": "❤", "红心": "❤",
+        "thumbs_up": "👍", "clap": "👏",
+        "pray": "🙏", "muscle": "💪",
+        "thinking": "🤔", "eyes": "👀",
+        "trophy": "🏆", "medal": "🏅", "crown": "👑",
+        "star": "⭐", "fire": "🔥", "hundred": "💯",
+        "laugh": "😂", "cry": "😭", "angry": "😡",
+        "cool": "😎", "shy": "😳", "sleeping": "😴",
+        # 物品 / 工具
+        "rocket": "🚀", "alarm": "⏰", "bell": "🔔",
+        "megaphone": "📢", "wrench": "🔧", "hammer": "🔨",
+        "scissors": "✂️", "pencil": "✏️", "book": "📖",
+        "lightbulb": "💡", "bulb": "💡",
+        "envelope": "✉️", "gift": "🎁",
+        "tada": "🎉", "balloon": "🎈", "confetti": "🎊",
+        # 食物 / 饮料
+        "coffee": "☕", "tea": "🍵", "beer": "🍺",
+        "cocktail": "🍸", "wine": "🍷",
+        "pizza": "🍕", "rice": "🍚", "fruit": "🍎",
+        "cake": "🎂", "cookie": "🍪", "bread": "🍞",
+        # 办公 / 效率
+        "phone": "📱", "camera": "📷", "clipboard": "📋",
+        "chart": "📈", "calendar": "📅",
+        "key": "🔑", "lock": "🔒",
+        "folder": "📁", "file": "📄",
+        "email": "📧", "call": "📞",
+        "microphone": "🎤", "video": "🎬", "tv": "📺",
+        "clock": "⏱️", "hourglass": "⏳",
+        "pen": "🖊️", "ruler": "📏",
+        "paperclip": "📎", "stamp": "📮",
+        "inbox": "📥", "outbox": "📤",
+        # 自然 / 科学
+        "earth": "🌏", "moon": "🌙", "sun": "☀️",
+        "rainbow": "🌈", "snowflake": "❄️",
+        "wave": "🌊", "anchor": "⚓",
+        "airplane": "✈️", "car": "🚗", "bicycle": "🚲",
+        "map": "🗺️", "compass": "🧭",
+        "flag": "🚩", "satellite": "🛰️",
+        "telescope": "🔭", "microscope": "🔬",
+        # 心情 / 状态
+        "money": "💰", "gem": "💎",
+        "love_letter": "💌",
+        "warning": "⚠️", "no_entry": "⛔",
+        "busy": "🉐", "free": "🆓", "secret": "🤫",
+        # 创意 / 兴趣
+        "goal": "🎯", "puzzle": "🧩",
+        "music": "🎵", "headphones": "🎧",
+        "sound": "🔊", "mute": "🔇",
+        "eye": "👁️", "ear": "👂", "nose": "👃",
+        "footprints": "👣",
+        # 健康 / 医疗
+        "bone": "🦴", "microbe": "🦠",
+        "pill": "💊", "syringe": "💉",
+        "thermometer": "🌡️",
+        # 工业 / 科学符号
+        "magnet": "🧲", "gear": "⚙️",
+        "atom": "⚛️", "dna": "🧬",
+        "biohazard": "☣️", "radioactive": "☢️",
+        "bio": "🌱",
+        # 植物 / 自然
+        "four_leaf": "🍀", "maple": "🍁",
+        "cherry": "🌸", "tulip": "🌷",
+        "rose": "🌹", "hibiscus": "🌺",
+        "shell": "🐚", "feather": "🪶",
+        # 装饰 / 特殊
+        "sparkle": "✨", "diamond": "💠",
+        "fleur": "⚜️", "comet": "☄️",
     }
 
     os.makedirs(project_dir + "/src", exist_ok=True)
@@ -290,7 +413,8 @@ def generate_remotion_gif(name, copy, visual_elements, theme_key, output_path, s
 
     theme = THEMES.get(theme_key, THEMES["cyberpunk"])
 
-    gif_path = output_path.replace(".png", ".gif")
+    # 输出强制使用 .gif 扩展名
+    gif_path = os.path.splitext(output_path)[0] + ".gif"
     start_frame = sticker_index * FRAMES_PER_STICKER
     end_frame = start_frame + FRAMES_PER_STICKER - 1
 
@@ -302,9 +426,13 @@ def generate_remotion_gif(name, copy, visual_elements, theme_key, output_path, s
          "--fps", str(FPS)],
         cwd=project_dir, capture_output=True, timeout=600
     )
-    if result.returncode == 0 and os.path.exists(gif_path):
-        log("[Remotion] " + name + " GIF 导出成功", "OK")
-        return True
+    if result.returncode == 0:
+        # 验证 GIF 文件存在且非空（Remotion 有时会生成 0 字节文件）
+        if os.path.exists(gif_path) and os.path.getsize(gif_path) > 1024:
+            log("[Remotion] " + name + " GIF 导出成功", "OK")
+            return True
+        else:
+            raise RuntimeError(f"GIF 文件无效或为空: {gif_path}")
     else:
         err = result.stderr.decode() if result.stderr else "未知错误"
         raise RuntimeError(err)
@@ -329,22 +457,37 @@ def pil_fallback(name, copy, visual_elements, theme_key, output_path):
     cx, cy = W // 2, H // 2 - 60
     elem_fns = {
         'brain': lambda: draw.ellipse([cx-150, cy-150, cx+150, cy+150], fill=primary + (80,)),
-        'neural_network': lambda: None,
+        'neural_network': lambda: (
+            [draw.ellipse([cx-200+nx*80, cy-100+ny*60, cx-200+nx*80+24, cy-100+ny*60+24],
+              fill=primary+(180,) if (nx+ny)%2==0 else secondary+(180,))
+             for nx in range(6) for ny in range(4)]
+        ) if True else None,
         'terminal': lambda: draw.rectangle([cx-300, cy-175, cx+300, cy+175], fill=(15,15,28,255), outline=primary+(200,), width=2),
-        'lightning': lambda: draw.text((cx-50, cy-80), "⚡", fill=(255,255,255,255), font=ImageFont.load_default(80)),
-        'heart': lambda: draw.text((cx-60, cy-60), "❤", fill=(255,60,90,255), font=ImageFont.load_default(80)),
-        'equals_sign': lambda: draw.text((cx-50, cy-50), "=", fill=(255,255,255,255), font=ImageFont.load_default(80)),
-        'question_mark': lambda: draw.text((cx-30, cy-40), "?", fill=primary+(255,), font=ImageFont.load_default(80)),
-        'eraser': lambda: draw.text((cx-40, cy-40), "🧹", fill=(200,150,100,255), font=ImageFont.load_default(60)),
-        'checkmark': lambda: draw.text((cx-40, cy-40), "✓", fill=(0,255,136,255), font=ImageFont.load_default(80)),
+        'lightning': lambda: draw.text((cx-50, cy-80), "⚡", fill=(255,255,255,255), font=get_font(80)),
+        'heart': lambda: draw.text((cx-60, cy-60), "❤", fill=(255,60,90,255), font=get_font(80)),
+        'equals_sign': lambda: draw.text((cx-50, cy-50), "=", fill=(255,255,255,255), font=get_font(80)),
+        'question_mark': lambda: draw.text((cx-30, cy-40), "?", fill=primary+(255,), font=get_font(80)),
+        'eraser': lambda: draw.text((cx-40, cy-40), "🧹", fill=(200,150,100,255), font=get_font(60)),
+        'checkmark': lambda: draw.text((cx-40, cy-40), "✓", fill=(0,255,136,255), font=get_font(80)),
         'math_canvas': lambda: draw.rectangle([cx-380, cy-250, cx+380, cy+250], fill=(10,10,10,255)),
+        'ai_chip': lambda: draw.rectangle([cx-120, cy-120, cx+120, cy+120], fill=primary+(60,), outline=primary+(200,), width=3),
+        'spotlight': lambda: (
+            draw.ellipse([cx-200, cy-250, cx+200, cy+250], fill=(255,255,200,25)),
+            draw.ellipse([cx-100, cy-150, cx+100, cy+150], fill=(255,255,200,40)),
+        ) if True else None,
+        'network_node': lambda: (
+            [draw.ellipse([cx-180+nx*90, cy-90+ny*70, cx-180+nx*90+20, cy-90+ny*70+20],
+              fill=primary+(200,))
+             for nx in range(5) for ny in range(3)]
+        ) if True else None,
+        'button': lambda: draw.rectangle([cx-150, cy-60, cx+150, cy+60], fill=primary+(200,), outline=primary+(255,), width=3),
     }
 
     for elem in visual_elements:
         fn = elem_fns.get(elem)
         if fn: fn()
 
-    font = ImageFont.load_default(60)
+    font = get_font(60)
     tw = sum(font.getbbox(c)[2] for c in copy)
     th = int(60 * 1.4)
     tx = (W - tw) // 2
@@ -395,6 +538,7 @@ def main():
     stickers_for_remotion = [(n, c, v) for n, c, v, _, _ in all_stickers]
 
     remotion_project_ready = False
+    remotion_used = False  # 标记本次是否使用了 Remotion（决定输出格式）
     if args.mode in ('auto', 'remotion') and check_remotion_available():
         try:
             _get_or_create_remotion_project(project_dir, stickers_for_remotion, args.theme)
@@ -407,16 +551,20 @@ def main():
     ok = 0
     for idx, (pf, sticker_data) in enumerate(zip(files, all_stickers)):
         name, copy, v_elems, s_kw, theme = sticker_data
-        out = os.path.join(args.output, os.path.basename(pf).replace('.md', '.png'))
+        # 输出扩展名根据实际生成模式决定：Remotion 用 .gif，AI/PIL 用 .png
+        ext = '.gif' if remotion_project_ready else '.png'
+        out = os.path.join(args.output, os.path.basename(pf).replace('.md', ext))
 
         mode = args.mode
         success = False
+        generated_ext = '.png'  # 默认 PNG
 
         # 阶段一：AI
         if mode in ('auto', 'ai'):
             try:
                 generate_ai_image(name, copy, s_kw, theme, out)
                 success = True
+                generated_ext = '.png'
             except Exception as e:
                 log(f"[AI] {name} 失败，降级: {e}", "WARN")
                 if mode == 'ai': continue
@@ -426,6 +574,8 @@ def main():
             try:
                 generate_remotion_gif(name, copy, v_elems, theme, out, idx, len(all_stickers), project_dir)
                 success = True
+                generated_ext = '.gif'
+                remotion_used = True
             except Exception as e:
                 log(f"[Remotion] {name} 失败，降级: {e}", "WARN")
                 if mode == 'remotion': continue
@@ -435,19 +585,20 @@ def main():
             try:
                 pil_fallback(name, copy, v_elems, theme, out)
                 success = True
+                generated_ext = '.png'
             except Exception as e:
                 log(f"[PIL] {name} 失败: {e}", "ERROR")
 
         if success:
             ok += 1
-            print(f"✓ {name}")
+            print(f"✓ {name} ({generated_ext})")
         else:
             print(f"✗ {name}")
 
     print(f"\n✅ {ok}/{len(files)} 张贴图生成完成")
     print(f"📦 {args.output}")
-    if remotion_project_ready:
-        print(f"🔧 Remotion 项目: {project_dir}")
+    if remotion_used:
+        print(f"🔧 Remotion 项目（保留用于后续调整）: {project_dir}")
 
 if __name__ == '__main__':
     main()
