@@ -1,17 +1,17 @@
 ---
 name: wechat-sticker-skill
 description: Create WeChat emoji sticker series from any input (URL, topic, or content). Use when user asks to "做微信贴图", "微信贴图", "创建微信贴图包", "WeChat stickers", "微信emoji", "根据内容生成贴图", "做一套贴图", "生成贴图". Triggers on sticker creation, emoji design, reaction images, or any WeChat sticker-related request.
-version: 4.3.5
+version: 4.4.1
 tags: ["wechat", "sticker", "emoji", "表情包", "贴图", "微信贴图", "remotion", "frame-generation"]
 metadata:
   author: zhushuyan
-  updated: "2026-05-01"
+  updated: "2026-05-02"
 ---
 
 
 > **更新日志**：所有变更记录在 [CHANGELOG.md](./CHANGELOG.md)。
 
-# 微信贴图生成器 v4.3.0 (WeChat Sticker Creator)
+# 微信贴图生成器 v4.4.1 (WeChat Sticker Creator)
 
 本技能根据用户输入（链接、主题或内容），自动进行内容聚合、贴图设计和生成，输出一套完整的微信表情包。
 
@@ -143,6 +143,59 @@ python3 scripts/pil_fallback.py \
 | `ai` | 仅 AI 生成，失败则整张贴图失败 |
 | `remotion` | 仅 Remotion 生成，失败则降级 PIL |
 | `pil` | 仅 PIL 生成（最稳定，完全离线） |
+
+### 新增参数（v4.4.0）
+
+| 参数 | 说明 |
+|------|------|
+| `--continue-on-error` | 某张贴图失败时跳过继续处理下一张 |
+| `--debug-remotion` | 保留 Remotion 调试文件（TSX 源码写入 `debug/` 目录） |
+| `--template-dir` | 自定义 Remotion 模板目录（覆盖内置模板 `remotion/template/`） |
+| `--remotion-version` | 指定 Remotion 版本（default: `4.0.448`） |
+
+# 步骤5：打包 + QA 检查
+python3 scripts/pack_stickers.py \
+  --input wechat-stickers/ai-coding-assistant/assets-cyberpunk/ \
+  --output wechat-stickers/ai-coding-assistant/stickers.zip
+
+python3 scripts/qa_check.py \
+  --input wechat-stickers/ai-coding-assistant/assets-cyberpunk/ \
+  --vocabulary docs/prompts-format.md
+
+# ── 单独使用 PIL 兜底（完全离线）──────────────────────
+python3 scripts/pil_fallback.py \
+  --input prompts/ \
+  --output assets-pil/ \
+  --theme cyberpunk
+```
+
+### --mode 参数
+
+`generate_frames.py` 支持强制指定生成模式：
+
+| 值 | 行为 |
+|----|------|
+| `auto`（默认） | AI → Remotion → PIL 自动降级 |
+| `ai` | 仅 AI 生成，失败则整张贴图失败 |
+| `remotion` | 仅 Remotion 生成，失败则降级 PIL |
+| `pil` | 仅 PIL 生成（最稳定，完全离线） |
+
+### 新增参数（v4.4.0）
+
+| 参数 | 说明 |
+|------|------|
+| `--continue-on-error` | 某张贴图失败时跳过继续处理下一张 |
+| `--debug-remotion` | 保留 Remotion 调试文件（TSX 源码写入 `debug/` 目录） |
+| `--template-dir` | 自定义 Remotion 模板目录（覆盖内置模板 `remotion/template/`） |
+| `--remotion-version` | 指定 Remotion 版本（default: `4.0.448`） |
+| `--dry-run` | 仅解析 `.md` 文件并打印生成计划，不生成任何文件 |
+
+`pack_stickers.py` 参数：
+
+| 参数 | 说明 |
+|------|------|
+| `--gif-only` | 只打包 GIF 文件，忽略 PNG/JPG |
+| `--png-only` | 只打包 PNG 文件，忽略 GIF/JPG |
 
 ## 核心概念
 

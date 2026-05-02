@@ -13,97 +13,13 @@ import os, sys, glob, argparse
 # ── 常量 ───────────────────────────────────────────────────
 W, H = 1080, 1440
 
-try:
-    from _vocab import THEMES
-except ImportError:
-    THEMES = {
-        "cyberpunk":  {"primary": "#00FFFF", "secondary": "#FF00FF", "bg": "#0D0D1A", "text": "#FFFFFF", "accent": "#00FF88"},
-        "kawaii":     {"primary": "#FF69B4", "secondary": "#FFB6C1", "bg": "#FFF0F5", "text": "#4A4A4A", "accent": "#FF1493"},
-        "neon":       {"primary": "#FF00FF", "secondary": "#00FFFF", "bg": "#1A0033", "text": "#FFFFFF", "accent": "#FF69B4"},
-        "retro":      {"primary": "#FFD700", "secondary": "#FF6B35", "bg": "#2D1B00", "text": "#FFFFFF", "accent": "#FF4500"},
-        "hand-drawn": {"primary": "#8B4513", "secondary": "#D2691E", "bg": "#FFF8DC", "text": "#4A4A4A", "accent": "#CD853F"},
-        "minimal":    {"primary": "#212529", "secondary": "#495057", "bg": "#F8F9FA", "text": "#212529", "accent": "#6C757D"},
-        "meme":       {"primary": "#FF4500", "secondary": "#FFD700", "bg": "#1A1A1A", "text": "#FFFFFF", "accent": "#FF6347"},
-    }
-
-# ── 字体 ───────────────────────────────────────────────────
-
-FONT_CACHE = {}
-
-def get_font(size=60):
-    """加载支持 emoji 的字体，优先使用系统字体"""
-    if size in FONT_CACHE:
-        return FONT_CACHE[size]
-
-    font_paths = [
-        # macOS
-        "/System/Library/Fonts/PingFang.ttc",
-        "/System/Library/Fonts/STHeiti Light.ttc",
-        "/System/Library/Fonts/Hiragino Sans GB.ttc",
-        "/Library/Fonts/Arial Unicode.ttf",
-        # Linux
-        "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        # Windows
-        "C:/Windows/Fonts/seguiemj.ttf",
-    ]
-
-    from PIL import ImageFont
-    for path in font_paths:
-        try:
-            font = ImageFont.truetype(path, size)
-            FONT_CACHE[size] = font
-            print(f"[字体] 加载成功: {path}")
-            return font
-        except Exception:
-            continue
-
-    font = ImageFont.load_default(size)
-    print(f"[字体] 警告：未找到 emoji 字体，使用默认位图字体")
-    FONT_CACHE[size] = font
-    return font
-
-def hex_to_rgb(h):
-    h = h.lstrip('#')
-    return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+# ── 共享模块 ───────────────────────────────────────────────
+from _vocab import THEMES, hex_to_rgb, parse_prompt_file, get_font
 
 def log(msg, level="INFO"):
     print(f"[{level}] {msg}")
 
-# ── 解析 ───────────────────────────────────────────────────
-
-def _parse_list(s):
-    """Parse a simple unquoted comma-separated list: [a, b, c]"""
-    s = s.strip()
-    if s.startswith('[') and s.endswith(']'):
-        s = s[1:-1]
-    return [x.strip() for x in s.split(',') if x.strip()]
-
-def parse_prompt_file(path):
-    """解析 prompts/*.md，返回 (name, copy, visual_elements, style_keyword, theme)"""
-    with open(path) as f:
-        content = f.read()
-    front = {}
-    in_front = False
-    for line in content.split('\n'):
-        stripped = line.strip()
-        if stripped == '---':
-            if not in_front: in_front = True
-            else: break
-            continue
-        if in_front and ':' in line:
-            k, v = line.split(':', 1)
-            front[k.strip()] = v.strip().strip('"').strip("'")
-    name    = front.get('name', os.path.basename(path).replace('.md',''))
-    copy    = front.get('copy', '')
-    try:    visual_elements = _parse_list(front.get('visual_elements', '[]'))
-    except: visual_elements = []
-    try:    style_keyword = _parse_list(front.get('style_keyword', '[]'))
-    except: style_keyword = []
-    theme   = front.get('theme', 'cyberpunk')
-    return name, copy, visual_elements, style_keyword, theme
-
-# ── 核心生成 ───────────────────────────────────────────────
+# ── 主入口 ───────────────────────────────────────────────
 
 def pil_fallback(name, copy, visual_elements, theme_key, output_path):
     """PIL 本地生成（兜底方案）"""
@@ -197,20 +113,15 @@ def pil_fallback(name, copy, visual_elements, theme_key, output_path):
         else:
             emoji_elements.append(elem)
     # 未匹配 elem_fns 的 key 横向排列为 emoji（最多4个）
+    # 直接使用 EMOJI_MAP（通过 _vocab 导入），无映射则显示原始 key
     if emoji_elements:
-        emoji_fonts = {
-            "ai大脑": "🧠", "ai计算": "🧠", "神经网络": "🧠",
-            "终端窗口": "💻", "芯片": "🤖",
-            "闪电": "⚡", "网络节点": "🔗", "按钮": "🔘",
-            "画布": "📐", "光晕": "🔦",
-            "机器人": "🤖", "ai芯片": "🤖",
-        }
+        from _vocab import EMOJI_MAP
         max_emoji = 4
         shown = emoji_elements[:max_emoji]
         total_w = len(shown) * 120
         start_x = cx - total_w // 2
         for i, elem in enumerate(shown):
-            emoji = emoji_fonts.get(elem, elem)
+            emoji = EMOJI_MAP.get(elem, elem)  # 无映射则显示原始字符串
             ex = start_x + i * 120
             draw.text((ex, cy - 80), emoji, fill=(255, 255, 255, 255), font=get_font(80))
 

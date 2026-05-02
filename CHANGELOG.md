@@ -1,5 +1,68 @@
 # Changelog - wechat-sticker-skill
 
+## v4.4.0 (2026-05-02) - Remotion 构建流程全面优化
+
+### P0 关键修复（Remotion 流程现在真正可工作）
+
+- **P0-1**: `npx remotion render --frames` 参数不存在 → 改用 `npx remotion still` 逐帧渲染 PNG，然后 PIL 合成 GIF。断点续传：已存在的帧跳过
+- **P0-2**: `check_remotion_available()` 仅检查 `npx --version` → 新增 `_check_remotion_environment()` 全面预检（npx + Remotion CLI + 版本兼容性）
+- **P0-3**: GIF 合成逻辑修复 — `generate_remotion_gif()` 现在正确渲染 90 帧 PNG，再通过 `_frames_to_gif_from_paths()` 用 PIL 合成 GIF
+
+### P1 稳定性与性能提升
+
+- **P1-1**: 持久化 Remotion 项目缓存于 `~/.cache/wechat-sticker-remotion/` — 新项目从缓存复制（跳过 npm install），节省 10-30s/次
+- **P1-2**: 版本自动检测 — `get_remotion_version()` 读取全局 `npx remotion --version`，不一致时输出 WARN；`--remotion-version` 参数覆盖
+- **P1-3**: 错误友好化 — `_parse_remotion_error()` 识别 10 种常见错误模式（delayRender timeout / chromium not found / JSX syntax error 等），输出可操作的建议
+- **P1-4**: 动态超时 — `timeout = max(120, total_frames * 2)`，替代固定 600s
+
+### P2 可维护性与调试体验
+
+- **P2-1**: 独立渲染日志 — `project_dir/logs/render_{N}.log` 记录每张贴图的 stdout/stderr/returncode
+- **P2-2**: `--continue-on-error` 批量处理 — 失败贴图跳过继续，最终报告成功/失败统计
+- **P2-3**: 帮助文档更新 — `--help` 输出包含全部新参数的完整 Usage
+- **P2-4**: `--debug-remotion` 调试模式 — `debug/` 目录保留写入的 TSX 源码
+
+### P3 架构改进
+
+- **P3-1**: 模板热重载检测 — `.template_mtime` 记录模板修改时间，有变更则强制重建项目
+- **P3-2**: `--template-dir` 自定义模板 — 覆盖内置 `remotion/template/` 路径
+- **P3-3**: 后台 PIL 预计算 — Remotion 渲染期间同时启动 PIL 生成，失败时立即使用预计算结果降级
+
+### 代码质量
+
+- `generate_frames.py` 从 833 行 → 1222 行（含完整注释和新增函数）
+- 全部 Python 文件通过 `py_compile` 语法检查
+- `_EMOJI_FALLBACK` 常量内联化，替代多处重复硬编码
+- `pil_fallback()` 保持与 v4.3.5 行为完全一致（无破坏性变更）
+
+### 第二轮优化（v4.4.1，2026-05-02）
+
+#### P3-3-FIX: `_background_pil_worker` 假并发修复
+- **问题**：`threading.Thread(target=lambda: [list comprehension])` — lambda 同步执行列表推导，线程形同虚设
+- **修复**：改用 `ThreadPoolExecutor(max_workers=N)` + `executor.submit()` 真正并发调度
+
+#### P2-5: `--dry-run` 预览模式
+- `generate_frames.py` 新增 `--dry-run` 参数，解析所有 `.md` 文件并打印每张贴图的主题/关键词/视觉元素，不生成任何文件
+
+#### P2-6: `--gif-only` / `--png-only` 过滤
+- `pack_stickers.py` 新增两个互斥过滤参数，`create_zip` / `generate_cover` / `generate_thumbnail` 全部受同一 filter 控制
+
+#### P2-7: 缩略图布局保护
+- `generate_thumbnail()` 新增 `MAX_THUMB=20` 限制，超出部分截断（原来 20 张贴图在 200×267 规格下每行高度仅 ~13px，多张时更小至不可读）
+- 缩略图输出文件名 `thumbnail-` → `thumb-`（更简洁）
+
+#### PIPELINE: v4.4.0 flags 透传
+- `run_full_pipeline.py` 新增 `--continue-on-error` / `--debug-remotion` / `--template-dir` / `--remotion-version` 参数，正确透传到 `generate_frames.py`
+
+### 代码行数变化
+
+| 文件 | v4.3.5 | v4.4.0 |
+|------|--------|--------|
+| `generate_frames.py` | 833 | 1222 |
+| `SKILL.md` | 186 | ~222 |
+
+---
+
 ## v4.3.5 (2026-05-01) - Emoji分布 + 词汇表完整性 + __init__.py
 
 ### 高严重修复

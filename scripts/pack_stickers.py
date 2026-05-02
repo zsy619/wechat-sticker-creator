@@ -38,20 +38,27 @@ def natural_sort_key(s):
     """自然排序 key：提取字符串中的数字"""
     return [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', s)]
 
-def find_sticker_files(input_dir):
-    """找到所有贴图文件，按文件名排序"""
+def find_sticker_files(input_dir, filter_ext=None):
+    """找到所有贴图文件，按文件名排序。可选按扩展名过滤。
+    
+    Args:
+        input_dir: 输入目录
+        filter_ext: 过滤扩展名，如 '.gif' 或 '.png'，None 则不过滤
+    """
     valid_exts = {'.png', '.gif', '.jpg', '.jpeg', '.webp'}
     files = []
     for f in os.listdir(input_dir):
         ext = os.path.splitext(f)[1].lower()
         if ext in valid_exts:
+            if filter_ext and ext != filter_ext:
+                continue
             files.append(f)
     return sorted(files, key=natural_sort_key)
 
-def generate_cover(input_dir, output_path, size):
+def generate_cover(input_dir, output_path, size, filter_ext=None):
     """生成封面图：将前6张贴图缩放后横向拼接"""
     w, h = size
-    files = find_sticker_files(input_dir)[:6]
+    files = find_sticker_files(input_dir, filter_ext)[:6]
 
     if not files:
         print(f"[警告] 未找到贴图文件，无法生成封面", file=__import__('sys').stderr)
@@ -79,17 +86,20 @@ def generate_cover(input_dir, output_path, size):
     print(f"  ✅ 封面: {output_path} ({w}x{h})")
     return True
 
-def generate_thumbnail(input_dir, output_path, size):
-    """生成缩略图：将所有贴图缩放后纵向拼接"""
+def generate_thumbnail(input_dir, output_path, size, filter_ext=None):
+    """生成缩略图：将所有贴图缩放后纵向拼接（最多20张，4×5网格布局）"""
     w, h = size
-    files = find_sticker_files(input_dir)
+    files = find_sticker_files(input_dir, filter_ext)
 
     if not files:
         print(f"[警告] 未找到贴图文件，无法生成缩略图", file=__import__('sys').stderr)
         return False
 
+    # P2-7: 限制最多20张（4列×5行），避免每行高度过小
+    MAX_THUMB = 20
+    files = files[:MAX_THUMB]
+
     thumb_w = w
-    # 安全整数除法：防止 len(files) 过大/过小导致问题
     count = max(1, len(files))
     thumb_h = h // count  # floor除法，超出部分截断而非崩溃
     canvas = Image.new('RGBA', (w, h), (0, 0, 0, 0))
@@ -108,12 +118,12 @@ def generate_thumbnail(input_dir, output_path, size):
             print(f"[警告] 缩略图第{i+1}张处理失败: {fname} ({e})")
 
     canvas.save(output_path, 'PNG')
-    print(f"  ✅ 缩略图: {output_path} ({w}x{h})")
+    print(f"  ✅ 缩略图: {output_path} ({w}x{h}, {len(files)} 张)")
     return True
 
-def create_zip(input_dir, output_path):
-    """将 input_dir 下的贴图打包为 ZIP"""
-    files = find_sticker_files(input_dir)
+def create_zip(input_dir, output_path, filter_ext=None):
+    """将 input_dir 下的贴图打包为 ZIP，可选按扩展名过滤"""
+    files = find_sticker_files(input_dir, filter_ext)
     if not files:
         print(f"[错误] 未找到贴图文件: {input_dir}", file=__import__('sys').stderr)
         return False
@@ -136,7 +146,19 @@ def main():
                      help='封面尺寸，如 900x383（微信公众号封面）')
     ap.add_argument('--thumbnail', metavar='WIDTHxHEIGHT',
                      help='缩略图尺寸，如 200x267')
+    ap.add_argument('--gif-only', action='store_true',
+                     help='只打包 GIF 文件，忽略 PNG/JPG')
+    ap.add_argument('--png-only', action='store_true',
+                     help='只打包 PNG 文件，忽略 GIF/JPG')
     args = ap.parse_args()
+
+    # P2-6: 确定过滤扩展名
+    if args.gif_only:
+        filter_ext = '.gif'
+    elif args.png_only:
+        filter_ext = '.png'
+    else:
+        filter_ext = None
 
     if not os.path.isdir(args.input):
         print(f"[错误] 目录不存在: {args.input}", file=__import__('sys').stderr)
@@ -150,7 +172,7 @@ def main():
     ok = True
 
     # ZIP
-    if not create_zip(args.input, args.output):
+    if not create_zip(args.input, args.output, filter_ext):
         ok = False
 
     # 封面
@@ -165,7 +187,7 @@ def main():
             size = COVER_SIZES['900x383']
 
         cover_path = os.path.join(output_dir, f"cover-{args.cover}.png")
-        if not generate_cover(args.input, cover_path, size):
+        if not generate_cover(args.input, cover_path, size, filter_ext):
             ok = False
 
     # 缩略图
@@ -179,8 +201,8 @@ def main():
             print(f"[警告] 未知缩略图尺寸: {args.thumbnail}，使用 200x267", file=__import__('sys').stderr)
             size = THUMBNAIL_SIZES['200x267']
 
-        thumb_path = os.path.join(output_dir, f"thumbnail-{args.thumbnail}.png")
-        if not generate_thumbnail(args.input, thumb_path, size):
+        thumb_path = os.path.join(output_dir, f"thumb-{args.thumbnail}.png")
+        if not generate_thumbnail(args.input, thumb_path, size, filter_ext):
             ok = False
 
     if ok:

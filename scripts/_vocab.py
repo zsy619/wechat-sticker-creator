@@ -191,103 +191,6 @@ THEMES = {
     "meme":       {"primary": "#FF4500", "secondary": "#FFD700", "bg": "#1A1A1A", "text": "#FFFFFF", "accent": "#FF6347"},
 }
 
-# ── elem_fns（绘制函数，仅 PIL 模式使用）────────────────────
-# 这些是纯符号/复杂几何绘制，不走 emoji 渲染路径
-
-from PIL import ImageDraw, ImageFont
-
-def _get_font(size=60):
-    """字体加载（延迟导入避免顶import）"""
-    import os
-    font_paths = [
-        "/System/Library/Fonts/PingFang.ttc",
-        "/System/Library/Fonts/STHeiti Light.ttc",
-        "/System/Library/Fonts/Hiragino Sans GB.ttc",
-        "/Library/Fonts/Arial Unicode.ttf",
-        "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "C:/Windows/Fonts/seguiemj.ttf",
-    ]
-    for path in font_paths:
-        if os.path.exists(path):
-            try:
-                return ImageFont.truetype(path, size)
-            except Exception:
-                continue
-    return ImageFont.load_default(size)
-
-def hex_to_rgb(h):
-    h = h.lstrip('#')
-    return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
-
-
-def build_elem_fns(draw, cx, cy, primary, secondary, get_font_fn=_get_font):
-    """
-    返回 elem_fns 字典，供 pil_fallback 使用。
-    参数：draw (ImageDraw), cx, cy (中心点), primary/secondary (RGB元组), get_font_fn
-    """
-    return {
-        # ── 几何绘制元素 ──────────────────────────────────
-        'brain': lambda: draw.ellipse([cx-150, cy-150, cx+150, cy+150], fill=primary + (80,)),
-        'neural_network': lambda: [
-            draw.ellipse([cx-200+nx*80, cy-100+ny*60, cx-200+nx*80+24, cy-100+ny*60+24],
-              fill=primary+(180,) if (nx+ny)%2==0 else secondary+(180,))
-             for nx in range(6) for ny in range(4)
-        ],
-        'terminal': lambda: draw.rectangle([cx-300, cy-175, cx+300, cy+175], fill=(15,15,28,255), outline=primary+(200,), width=2),
-        'math_canvas': lambda: draw.rectangle([cx-380, cy-250, cx+380, cy+250], fill=(10,10,10,255)),
-        'ai_chip': lambda: draw.rectangle([cx-120, cy-120, cx+120, cy+120], fill=primary+(60,), outline=primary+(200,), width=3),
-        'spotlight': lambda: (
-            draw.ellipse([cx-200, cy-250, cx+200, cy+250], fill=(255,255,200,25)),
-            draw.ellipse([cx-100, cy-150, cx+100, cy+150], fill=(255,255,200,40)),
-        ),
-        'network_node': lambda: [
-            draw.ellipse([cx-180+nx*90, cy-90+ny*70, cx-180+nx*90+20, cy-90+ny*70+20],
-              fill=primary+(200,))
-             for nx in range(5) for ny in range(3)
-        ],
-        'button': lambda: draw.rectangle([cx-150, cy-60, cx+150, cy+60], fill=primary+(200,), outline=primary+(255,), width=3),
-        # ── 符号/文本绘制元素 ──────────────────────────────
-        'lightning': lambda: draw.text((cx-50, cy-80), "⚡", fill=(255,255,255,255), font=get_font_fn(80)),
-        'heart': lambda: draw.text((cx-60, cy-60), "❤", fill=(255,60,90,255), font=get_font_fn(80)),
-        'equals_sign': lambda: draw.text((cx-50, cy-50), "=", fill=(255,255,255,255), font=get_font_fn(80)),
-        'question_mark': lambda: draw.text((cx-30, cy-40), "?", fill=primary+(255,), font=get_font_fn(80)),
-        'eraser': lambda: draw.text((cx-40, cy-40), "🧹", fill=(200,150,100,255), font=get_font_fn(60)),
-        'checkmark': lambda: draw.text((cx-40, cy-40), "✓", fill=(0,255,136,255), font=get_font_fn(80)),
-        # ── 复杂绘制元素 ──────────────────────────────────
-        'code': lambda: (
-            draw.rectangle([cx-300, cy-175, cx+300, cy+175], fill=(15,15,28,255), outline=primary+(200,), width=2),
-            draw.text((cx-240, cy-100), ">>>", fill=(0,255,136,255), font=get_font_fn(48)),
-            draw.text((cx-240, cy-40), "def f(x):", fill=(0,200,255,255), font=get_font_fn(40)),
-            draw.text((cx-240, cy+20), "    return x", fill=(150,150,150,255), font=get_font_fn(36)),
-        ),
-        'algorithm': lambda: (
-            draw.rectangle([cx-260, cy-200, cx-60, cy-120], fill=primary+(60,), outline=primary+(200,), width=2),
-            draw.rectangle([cx-60, cy-200, cx+140, cy-120], fill=secondary+(60,), outline=secondary+(200,), width=2),
-            draw.rectangle([cx-160, cy-60, cx+40, cy+20], fill=primary+(60,), outline=primary+(200,), width=2),
-            draw.text((cx-200, cy-170), "IN", fill=(255,255,255,255), font=get_font_fn(32)),
-            draw.text((cx-10, cy-170), "PROC", fill=(255,255,255,255), font=get_font_fn(32)),
-            draw.text((cx-120, cy-30), "OUT", fill=(255,255,255,255), font=get_font_fn(32)),
-        ),
-        'function': lambda: draw.text((cx-200, cy-40), "ƒ(x) =", fill=primary+(255,), font=get_font_fn(72)),
-        'variable': lambda: (
-            draw.text((cx-120, cy-40), "x =", fill=primary+(255,), font=get_font_fn(72)),
-            draw.text((cx+20, cy-30), "???", fill=secondary+(255,), font=get_font_fn(56)),
-        ),
-        'bio': lambda: [
-            (
-                draw.ellipse([cx-160+ny*40-8, cy-120+ny*30-8, cx-160+ny*40+8, cy-120+ny*30+8], fill=primary+(180,)),
-                draw.ellipse([cx+160-ny*40-8, cy-120+ny*30-8, cx+160-ny*40+8, cy-120+ny*30+8], fill=secondary+(180,)),
-                draw.line([cx-160+ny*40, cy-120+ny*30, cx+160-ny*40, cy-120+ny*30], fill=primary+(80,), width=2),
-            ) for ny in range(9)
-        ],
-        'secret': lambda: (
-            draw.text((cx-140, cy-50), "***", fill=(255,215,0,255), font=get_font_fn(80)),
-            draw.text((cx-200, cy+50), "CLASSIFIED", fill=(255,100,100,255), font=get_font_fn(28)),
-        ),
-    }
-
-
 def validate_key(key):
     """校验单个 key 是否在词汇表中"""
     return key in VOCABULARY
@@ -298,3 +201,87 @@ def filter_valid_keys(keys):
     valid = [k for k in keys if k in VOCABULARY]
     invalid = [k for k in keys if k not in VOCABULARY]
     return valid, invalid
+
+
+# ── 字体（带缓存）────────────────────────────────────────────
+
+_FONT_CACHE = {}   # {size: ImageFont}
+
+FONT_PATHS = [
+    # macOS
+    "/System/Library/Fonts/PingFang.ttc",
+    "/System/Library/Fonts/STHeiti Light.ttc",
+    "/System/Library/Fonts/Hiragino Sans GB.ttc",
+    "/Library/Fonts/Arial Unicode.ttf",
+    # Linux
+    "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    # Windows
+    "C:/Windows/Fonts/seguiemj.ttf",
+]
+
+
+def get_font(size=60):
+    """
+    加载支持 emoji 的字体（带模块级缓存）。
+    依次尝试 FONT_PATHS 中的路径，返回第一个可用字体。
+    """
+    if size in _FONT_CACHE:
+        return _FONT_CACHE[size]
+    from PIL import ImageFont
+    import os
+    for path in FONT_PATHS:
+        if os.path.exists(path):
+            try:
+                font = ImageFont.truetype(path, size)
+                _FONT_CACHE[size] = font
+                return font
+            except Exception:
+                continue
+    font = ImageFont.load_default(size)
+    _FONT_CACHE[size] = font
+    return font
+
+
+# ── 解析 ───────────────────────────────────────────────────
+
+def _parse_list(s):
+    """Parse a simple unquoted comma-separated list: [a, b, c]"""
+    s = s.strip()
+    if s.startswith('[') and s.endswith(']'):
+        s = s[1:-1]
+    return [x.strip() for x in s.split(',') if x.strip()]
+
+
+def parse_prompt_file(path):
+    """
+    解析 prompts/*.md，返回 (name, copy, visual_elements, style_keyword, theme)
+    统一实现，所有脚本共享。
+    """
+    with open(path) as f:
+        content = f.read()
+    front = {}
+    in_front = False
+    for line in content.split('\n'):
+        stripped = line.strip()
+        if stripped == '---':
+            if not in_front:
+                in_front = True
+            else:
+                break
+            continue
+        if in_front and ':' in line:
+            k, v = line.split(':', 1)
+            front[k.strip()] = v.strip().strip('"').strip("'")
+    name = front.get('name', os.path.basename(path).replace('.md', ''))
+    copy = front.get('copy', '')
+    try:
+        visual_elements = _parse_list(front.get('visual_elements', '[]'))
+    except:
+        visual_elements = []
+    try:
+        style_keyword = _parse_list(front.get('style_keyword', '[]'))
+    except:
+        style_keyword = []
+    theme = front.get('theme', 'cyberpunk')
+    return name, copy, visual_elements, style_keyword, theme

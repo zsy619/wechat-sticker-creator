@@ -77,7 +77,7 @@ def run_workflow(args):
 
     print(f"""
 ╔═══════════════════════════════════════════╗
-║   微信贴图完整工作流 (v4.3.1)            ║
+║   微信贴图完整工作流 (v4.4.0)            ║
 ╚═══════════════════════════════════════════╝
 
 输入: {args.input[:80]}{'...' if len(args.input) > 80 else ''}
@@ -128,14 +128,27 @@ def run_workflow(args):
 
     # 步骤4：图片生成
     if args.mode in ('auto', 'full', 'frames'):
+        frame_cmd = [
+            sys.executable, script_path('generate_frames.py'),
+            '--input', prompts_dir + '/',
+            '--output', assets_dir + '/',
+            '--theme', args.theme,
+        ]
+        if getattr(args, 'continue_on_error', False):
+            frame_cmd.append('--continue-on-error')
+        if getattr(args, 'debug_remotion', False):
+            frame_cmd.append('--debug-remotion')
+        if getattr(args, 'template_dir', None):
+            frame_cmd.extend(['--template-dir', args.template_dir])
+        if getattr(args, 'remotion_version', None):
+            frame_cmd.extend(['--remotion-version', args.remotion_version])
+        if getattr(args, 'parallel', False):
+            frame_cmd.append('--parallel')
+        if getattr(args, 'dry_run', False):
+            frame_cmd.append('--dry-run')
         steps.append({
             'name': '4-图片生成',
-            'cmd': [
-                sys.executable, script_path('generate_frames.py'),
-                '--input', prompts_dir + '/',
-                '--output', assets_dir + '/',
-                '--theme', args.theme,
-            ],
+            'cmd': frame_cmd,
         })
 
     # 步骤5：QA 检查
@@ -215,6 +228,8 @@ def main():
 示例:
   python3 run_full_pipeline.py --input "AI编程助手" --output ~/wechat/ai --theme cyberpunk
   python3 run_full_pipeline.py --input "https://github.com/xxx" --output ~/wechat/xxx --mode prompts
+  python3 run_full_pipeline.py --input "AI编程助手" --output ~/wechat/ai --continue-on-error --debug-remotion
+  python3 run_full_pipeline.py --input "AI编程助手" --output ~/wechat/ai --parallel --dry-run
         """
     )
     ap.add_argument('--input', required=True,
@@ -234,6 +249,18 @@ def main():
                     help='生成后自动打包（默认开启）')
     ap.add_argument('--no-pack', dest='pack', action='store_false',
                     help='跳过打包')
+    ap.add_argument('--continue-on-error', action='store_true',
+                    help='图片生成失败时跳过继续下一张（透传给 generate_frames.py）')
+    ap.add_argument('--debug-remotion', action='store_true',
+                    help='保留 Remotion 调试文件（透传给 generate_frames.py）')
+    ap.add_argument('--template-dir',
+                    help='自定义 Remotion 模板目录（透传给 generate_frames.py）')
+    ap.add_argument('--remotion-version',
+                    help=f'Remotion 版本（透传给 generate_frames.py，default: 4.0.448）')
+    ap.add_argument('--parallel', action='store_true',
+                    help='PIL 模式并行生成（透传给 generate_frames.py）')
+    ap.add_argument('--dry-run', action='store_true',
+                    help='仅打印计划不实际生成（透传给 generate_frames.py）')
     args = ap.parse_args()
 
     run_workflow(args)
