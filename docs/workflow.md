@@ -17,7 +17,7 @@
     ↓
 生成贴图提示词 (prompts/*.md)
     ↓
-图片生成（AI → Remotion → PIL）
+图片生成（AI → Remotion(remotion-best-practices skill) → PIL）
     ↓
 输出汇总 & 标签推荐
 ```

@@ -2,7 +2,7 @@
 name: wechat-sticker-skill
 description: Create WeChat emoji sticker series from any input (URL, topic, or content). Use when user asks to "做微信贴图", "微信贴图", "创建微信贴图包", "WeChat stickers", "微信emoji", "根据内容生成贴图", "做一套贴图", "生成贴图". Triggers on sticker creation, emoji design, reaction images, or any WeChat sticker-related request.
 version: 4.7.0
-tags: ["wechat", "sticker", "emoji", "表情包", "贴图", "微信贴图", "remotion", "frame-generation"]
+tags: ["wechat", "sticker", "emoji", "表情包", "贴图", "微信贴图", "remotion-best-practices", "frame-generation"]
 metadata:
   author: zhushuyan
   updated: "2026-05-02"
@@ -27,7 +27,7 @@ metadata:
 │     调用大模型（GPT-Image / Seedream 等）直接生成高质量帧
 │     ↓ 异常                                              │
 │  ② Remotion 帧导出（第二选择）                          │
-│     每张贴图构建独立 Remotion 项目，每帧 = <Composition> 组件
+│     建独立 remotion-best-practices skill 项目，每张贴图对应每帧 = <Composition> 组件
 │     导出 **GIF**（90帧动画），独特视觉设计 + 动画特效                              │
 │     ↓ 异常                                              │
 │  ③ PIL 本地生成（兜底）                                 │

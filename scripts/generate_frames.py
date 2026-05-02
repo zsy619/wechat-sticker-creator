@@ -187,13 +187,16 @@ def _check_remotion_environment():
     except subprocess.TimeoutExpired:
         return False, "npx --version 超时"
 
-    # 检查 Remotion CLI
+    # 检查 Remotion CLI（v3.3.0 的 `versions` 和 `--version` 都返回 exitcode=1，
+    # 但 stdout 包含版本信息视为成功）
+    version_str = ""
     try:
         r = subprocess.run(['npx', 'remotion', '--version'],
                           capture_output=True, timeout=30, text=True)
-        if r.returncode != 0:
-            return False, f"remotion CLI 不可用（returncode={r.returncode}）"
-        version_str = r.stdout.strip().split('\n')[0]
+        # exitcode=1 仍视为成功（只要有版本输出）
+        version_str = r.stdout.strip().split('\n')[0] if r.stdout.strip() else ""
+        if not version_str or '@remotion/cli' not in version_str:
+            return False, f"remotion CLI 不可用（无有效版本输出）"
         log(f"[Remotion] 检测到版本: {version_str}", "INFO")
     except FileNotFoundError:
         return False, "npx remotion 未安装"
@@ -1148,8 +1151,18 @@ def main():
                         break
                     continue
 
-        # 阶段二：Remotion（复用单一项目）
+        # 阶段二：Remotion（加载最佳实践 skill，执行复用单一项目）
         if not success and mode in ('auto', 'remotion') and remotion_project_ready:
+            # 加载 Remotion 最佳实践 skill（获取 CLI 限制、Chrome 配置、序列模式等知识）
+            try:
+                from importlib import import_module
+                _skill_mod = import_module("hermes_tools")
+                _skill_view = getattr(_skill_mod, "skill_view", None)
+                if _skill_view:
+                    _skill_view("remotion-best-practices")
+                    log("[Remotion] 已加载 remotion-best-practices 技能知识", "INFO")
+            except Exception as _e:
+                log(f"[Remotion] 加载 remotion-best-practices 失败: {_e}，继续执行", "WARN")
             try:
                 # P3-3: 检查是否已有 PIL 预计算结果可用（Remotion 失败时快速降级）
                 use_pil_prefetch = idx in _pil_precomputed and idx not in _pil_precompute_errors
