@@ -48,23 +48,11 @@ python3 scripts/qa_check.py \
 - **解决方案**：跳过搜索步骤，直接使用原始输入
 - **影响**：内容分析可能不够全面，但不影响生成
 
-### 所有 API 不可用
-
-- **解决方案**：使用 PIL 本地生成
-- **命令**：`python3 scripts/pil_fallback.py --input prompts/ --output assets/`
-- **注意**：确保已创建 `prompts/` 目录并包含所有提示词文件
-
-### AI 生成全部失败
-
-- **症状**：所有贴图均为纯文字，无专属视觉
-- **原因**：所有 API Provider 均不可用
-- **解决方案**：检查网络连接，或切换到纯 PIL 模式
-
 ### Remotion 导出失败
 
 - **症状**：`npx remotion still` 报错
-- **原因**：Node.js 不可用 / 组件编译错误
-- **解决方案**：检查 Node.js 安装，或降级到 PIL
+- **原因**：Node.js 不可用 / 组件编译错误 / 版本不兼容
+- **解决方案**：检查 Node.js 安装，升级 Remotion 版本
 
 ### 目录冲突
 
@@ -75,10 +63,95 @@ python3 scripts/qa_check.py \
 
 - **微信贴图标准**：1080×1440px
 - **文件格式**：PNG（透明或主题相关背景）
-- **如需调整**：使用 `Image.resize()` 和 `img.save()` 方法
+- **如需调整**：使用 ffmpeg `scale` 和 `crop` 滤镜
 
 ### 字体缺失
 
-- **症状**：文字渲染为默认字体或警告
-- **原因**：macOS 系统字体路径不存在
-- **解决方案**：检查 `FONT_PATHS` 列表，确保至少一个路径有效
+- **症状**：Remotion 渲染时文字为默认字体或警告
+- **原因**：系统字体路径不存在
+- **解决方案**：安装中文字体（macOS: `brew install font-cctia` 或从 App Store 安装）
+
+## Remotion 已知问题
+
+### Sequence + AbsoluteFill 居中失效
+
+- **症状**：Remotion 导出的帧中文字为空白/透明（max channel ~100 而非 255），无控制台报错
+- **根因**：在 `Sequence` 内直接放 `AbsoluteFill` 并用 `justifyContent: 'center'` 居中，Chrome headless 下 centering 完全失效
+- **解决**：场景拆为独立组件，`AbsoluteFill` 放在 Scene 组件内部，不直接放在 `Sequence` 下
+
+### Chrome headless SSL 错误
+
+- **症状**：`unable to get local issuer certificate` 导致 Remotion 无法下载 Chrome
+- **解决**：在 `remotion.config.ts` 中指定系统 Chrome（macOS）：
+
+```ts
+import { Config } from '@remotion/cli/config';
+Config.setBrowserExecutable('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
+```
+
+### 渲染崩溃（frame 2500-3000）
+
+- **症状**：复杂动画在长帧数时 Chrome headless 崩溃
+- **解决**：
+  - 减少每帧动画元素数量
+  - 用 CSS 渐变替代动画 SVG
+  - 超过 60 秒的视频分段渲染（~30s/段）
+
+### `registerRoot` 直接传组件导致 hooks 失效
+
+- **症状**：`useCurrentFrame() can only be called inside a component that is part of a composition`
+- **根因**：`registerRoot(MyVideo)` 绕过了 Remotion Composition 上下文
+- **解决**：使用 Root 组件 + `<Composition id="X" component={MyVideo} .../>` 包装
+
+### 包版本冲突
+
+- **症状**：`delayRender() timeout`、`React context lost`
+- **根因**：多个 Remotion 版本同时存在于 `node_modules`
+- **解决**：`package.json` 固定 `"remotion": "4.0.448"`，只安装 `remotion` 包（不装 `@remotion/core` 等不存在的 v4 包）
+
+### Remotion CLI 调试技巧
+
+#### `remotion still` 报错 `width prop must be a number`
+
+- **症状**：`npx remotion still src/index.tsx StickerComponent` 报错 `width prop must be a number, but passed undefined`
+- **根因**：Discovery 阶段 Remotion 调用 `StickerComponent(undefined)`，`<Composition>` 的 `width={width}` 没有默认值
+- **解决**：在 `<Composition>` 属性中使用 `??` 提供 fallback：
+
+```tsx
+<Composition
+  durationInFrames={totalFrames ?? 720}
+  fps={fps ?? 30}
+  width={width ?? 1080}
+  height={height ?? 1440}
+/>
+```
+
+#### 验证修复
+
+修复后执行：
+
+```bash
+cd ~/wechat-stickers/{项目名}/remotion-sticker/
+npx remotion still src/index.tsx StickerComponent --output /tmp/test-still.png
+```
+
+成功输出示例：
+
+```
+Your still frame is ready! Output: out/StickerComponent.png
+Rendering time: 4s
+```
+
+注意：输出尺寸可能略大于预期的 `width×height`（如 1523×2030 而非 1080×1440），这是 Remotion 内部缩放行为，不影响内容正确性。
+
+#### 确认 ?? fallback 不干扰正常渲染
+
+正式渲染时，`??` fallback 只在 Discovery 阶段（props=undefined）生效；正常渲染时 `<Composition>` 仍从外层 props 取值。验证方式：
+
+```bash
+npx remotion render src/index.tsx StickerComponent \
+  --props '{"totalFrames":540,"fps":30,"width":1080,"height":1440}' \
+  --output out/
+```
+
+若输出视频帧尺寸为 1080×1440（而非 fallback 的 1523×2030），说明正常渲染取值正确。

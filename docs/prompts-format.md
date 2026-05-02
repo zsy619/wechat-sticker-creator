@@ -565,9 +565,9 @@ python3 scripts/generate_prompts.py \
 | 植物/自然 | `four_leaf`, `maple`, `cherry`, `tulip`, `rose`, `hibiscus`, `shell`, `feather` |
 | 装饰/特殊 | `sparkle`, `diamond`, `fleur`, `comet` |
 
-**非 emoji 绘制元素**（对应 PIL elem_fns 特殊绘制逻辑）：
+**非 emoji 绘制元素**（对应 Remotion elem_fns 特殊绘制逻辑）：
 
-| key | PIL 绘制方式 | emoji 映射 |
+| key | Remotion 绘制方式 | emoji 映射 |
 |-----|-------------|-----------|
 | `brain` | 椭圆形光晕 | 🧠 |
 | `neural_network` | 网格节点阵列 | 🧠 |

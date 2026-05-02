@@ -78,7 +78,7 @@ def main():
     parser.add_argument('--input-type', default='N',
                         help='输入类型（URL/主题词/文本）')
     parser.add_argument('--generation-mode', default='auto',
-                        help='生成模式（auto/ai/remotion/pil）')
+                        help='生成模式（auto/ai/remotion）')
     parser.add_argument('--input-total', default='N',
                         help='总输入 Token')
     parser.add_argument('--output-total', default='N',

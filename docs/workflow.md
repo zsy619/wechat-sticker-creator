@@ -17,7 +17,7 @@
     ↓
 生成贴图提示词 (prompts/*.md)
     ↓
-图片生成（AI → Remotion → PIL）
+图片生成（两段式：AI → Remotion）
     ↓
 输出汇总 & 标签推荐
 ```
@@ -157,3 +157,11 @@ python3 scripts/generate_tags.py \
     --output docs/tags.md \
     --theme neon
 ```
+
+## Remotion 分段渲染（超长视频处理）
+
+Remotion 在 frame 2500-3000 时 Chrome headless 可能崩溃。如需渲染超长内容（>60秒）：
+
+1. **分段渲染**：每段 30 秒，分别导出后用 ffmpeg 拼接
+2. **简化动画**：减少每帧动画元素数量，用 CSS 渐变替代动画 SVG
+3. **指定系统 Chrome**：避免 SSL 证书问题（详见 [qa.md](../qa.md#remotion-已知问题)）

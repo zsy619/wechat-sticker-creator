@@ -47,7 +47,7 @@
 - **备注**:
 
 ### 图片生成
-- **模式**: {generation_mode}（AI → Remotion → PIL 自动降级）
+- **模式**: {generation_mode}（AI → Remotion 两段式）
 - **成功数**: N / {sticker_count}
 - **处理时长**: N 秒
 - **备注**:

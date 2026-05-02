@@ -44,6 +44,18 @@ def _session_log_step(project_root, theme, sticker_count, verbose=True):
         verbose=verbose,
     )
 
+def _post_step(project_root, theme, link, verbose=True):
+    """步骤8：生成 post.md（微信公众号推广文档）"""
+    from generate_post import generate_post
+    output = os.path.join(project_root, 'docs', 'post.md')
+    return generate_post(
+        project_root=project_root,
+        theme=theme,
+        link=link,
+        output=output,
+        verbose=verbose,
+    )
+
 # ── 步骤执行 ─────────────────────────────────────────────
 
 def run_step(step_name, cmd, cwd=None, timeout=300):
@@ -94,7 +106,7 @@ def run_workflow(args):
 
     print(f"""
 ╔═══════════════════════════════════════════╗
-║   微信贴图完整工作流 (v4.8.2)            ║
+║   微信贴图完整工作流 (v4.8.5)            ║
 ╚═══════════════════════════════════════════╝
 
 输入: {args.input[:80]}{'...' if len(args.input) > 80 else ''}
@@ -104,6 +116,7 @@ def run_workflow(args):
 文档: {'✓ 包含' if args.with_docs else '✗ 跳过'}
 标签: {'✓ 包含' if args.with_tags else '✗ 跳过'}
 SessionLog: {'✓ 包含' if args.with_session_log else '✗ 跳过'}
+Post: {'✓ 包含' if getattr(args, 'with_post', True) else '✗ 跳过'}
 """)
 
     os.makedirs(project_root, exist_ok=True)
@@ -225,6 +238,13 @@ SessionLog: {'✓ 包含' if args.with_session_log else '✗ 跳过'}
             'func': lambda: _session_log_step(project_root, args.theme, sticker_count),
         })
 
+    # 步骤8：post.md（微信公众号推广文档）
+    if getattr(args, 'with_post', True):
+        steps.append({
+            'name': '8-Post',
+            'func': lambda: _post_step(project_root, args.theme, getattr(args, 'link', '')),
+        })
+
     # 执行所有步骤
     if not steps:
         print("[错误] 没有要执行的步骤（请检查 --mode 参数）")
@@ -335,7 +355,7 @@ def main():
     ap.add_argument('--remotion-version',
                     help=f'Remotion 版本（透传给 generate_frames.py，default: 4.0.448）')
     ap.add_argument('--parallel', action='store_true',
-                    help='PIL 模式并行生成（透传给 generate_frames.py）')
+                    help='并行生成（透传给 generate_frames.py）')
     ap.add_argument('--dry-run', action='store_true',
                     help='仅打印计划不实际生成（透传给 generate_frames.py）')
     # 新增：文档相关
@@ -356,6 +376,14 @@ def main():
                     help='生成 session-log.md（默认开启）')
     ap.add_argument('--no-session-log', action='store_false', dest='with_session_log',
                     help='跳过 session-log 生成')
+    # 新增：post.md
+    ap.add_argument('--with-post', action='store_true', default=True,
+                    dest='with_post',
+                    help='生成 post.md 微信公众号推广文档（默认开启）')
+    ap.add_argument('--no-post', action='store_false', dest='with_post',
+                    help='跳过 post.md 生成')
+    ap.add_argument('--link', default='',
+                    help='项目链接（用于 post.md）')
     args = ap.parse_args()
 
     run_workflow(args)

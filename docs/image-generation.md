@@ -1,4 +1,4 @@
-# 图片生成（四阶段工作流）
+# 图片生成（两段式工作流）
 
 ## 优先级总览
 
@@ -6,18 +6,13 @@
 ┌─────────────────────────────────────────┐
 │  阶段一：AI 生成图像（首选）             │
 │  调用大模型直接生成高质量帧              │
-│  失败 → 自动降级                         │
+│  失败 → 降级到 Remotion                 │
 └──────────────────┬──────────────────────┘
                    ↓
 ┌─────────────────────────────────────────┐
 │  阶段二：Remotion 帧导出（第二选择）     │
-│  每张贴图 = <Still>组件 → 导出 PNG      │
-│  失败 → 自动降级                         │
-└──────────────────┬──────────────────────┘
-                   ↓
-┌─────────────────────────────────────────┐
-│  阶段三：PIL 本地生成（兜底）            │
-│  词汇表驱动 + 场景构图                   │
+│  每张贴图 = <Still>组件 → 导出 GIF 动画│
+│  失败 → 报错停止（不再降级）           │
 └─────────────────────────────────────────┘
 ```
 
@@ -70,7 +65,7 @@ with open('batch.json', 'w') as f:
 
 ## 阶段二 · Remotion 帧导出（第二选择）
 
-**适用**：需要精确控制视觉元素、程序化绘制。
+**适用**：需要精确控制视觉元素、程序化绘制，或 AI 生成失败后的备选。
 
 ### 流程
 
@@ -108,56 +103,16 @@ npx remotion render src/index.tsx StickerComponent \
 
 ### 异常处理
 
-- **Node.js 不可用** → 降级到 PIL
-- **npx remotion 报错** → 降级到 PIL
+- **Node.js 不可用** → 报错停止
+- **npx remotion 报错** → 报错停止
 - **组件编译错误** → 记录错误，跳过该贴图
-
-## 阶段三 · PIL 本地生成（兜底）
-
-**适用**：完全离线、稳定可靠。
-
-```bash
-python3 scripts/pil_fallback.py \
-  --input prompts/ \
-  --output assets-pil/ \
-  --theme cyberpunk
-```
-
-### 词汇表驱动
-
-`visual_elements` 字段直接映射到词汇表函数：
-
-| 关键词 | 绘制函数 |
-|--------|---------|
-| `brain` / `ai大脑` | `_draw_brain()` |
-| `神经网络` | `_draw_neural_network()` |
-| `terminal` / `终端窗口` | `_draw_terminal()` |
-| `heart` / `红心` | `_draw_heart()` |
-| `equals_sign` / `等号` | `_draw_equals_sign()` |
-| `question_mark` / `问号` | `_draw_question_mark()` |
-| `eraser` / `橡皮擦` | `_draw_eraser()` |
-| `checkmark` / `对勾` | `_draw_checkmark()` |
-| `math_canvas` / `画布` | `_draw_math_canvas()` |
-
-### 场景构图（方案D）
-
-- **FOCUS 元素**：居中放大（brain, terminal, math_canvas 等）
-- **ACCENT 元素**：小尺寸散布（heart, question_mark, checkmark 等）
-- **布局预设**：`single` / `dual` / `triple` / `diffuse`
 
 ## 贴图生成核心规则（所有阶段适用）
 
 - **尺寸**：1080×1440px（微信贴图标准）
-- **格式**：PNG
+- **格式**：PNG 或 GIF
 - **文字**：底部居中，左右 margin 30px，距底边 30px
-- **文件名**：`{num}-{name}.png`
-
-## 每张贴图的专属视觉生成规则
-
-`visual_elements` 中的每个关键词对应一个词汇表函数，无需为新项目编写代码。词汇表覆盖：
-
-- FOCUS：brain / neural_network / terminal / lightning / math_canvas / ai_chip / command_k / equals_sign
-- ACCENT：heart / question_mark / checkmark / eraser / spotlight / network_node / button
+- **文件名**：`{num}-{name}.png` 或 `.gif`
 
 ## 输出格式
 
@@ -165,7 +120,7 @@ python3 scripts/pil_fallback.py \
 
 ```
 assets-{theme}/
-├── 01-{name}.png   ← 1080×1440px PNG
-├── 02-{name}.png
+├── 01-{name}.gif   ← 1080×1440px GIF 动画
+├── 02-{name}.gif
 └── ...
 ```

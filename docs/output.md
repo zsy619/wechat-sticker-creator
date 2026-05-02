@@ -5,7 +5,7 @@
 详见 [project-structure.md](project-structure.md)。
 
 - **尺寸**：1080×1440px（微信贴图标准）
-- **格式**：PNG（AI/PIL 模式）或 GIF（Remotion 模式，90帧动画）
+- **格式**：PNG（AI 模式）或 GIF（Remotion 模式，90帧动画）
 - **命名**：`{序号}-{贴图名称}.png` 或 `.gif`
 
 ### ZIP 打包（可选）
@@ -23,7 +23,7 @@ zip -r ../output/stickers-{slug}-{theme}.zip *.png
 ═══════════════════════════════════════════
 
 主题: {topic}
-生成方式: AI / Remotion / PIL
+生成方式: AI / Remotion
 风格: {theme}
 贴图数量: {N} 张
 输出目录: wechat-stickers/{slug}/assets-{theme}/
@@ -47,13 +47,9 @@ zip -r ../output/stickers-{slug}-{theme}.zip *.png
 ### 生成贴图图片
 
 ```bash
-# 使用 PIL 缩放
-python3 -c "
-from PIL import Image
-img = Image.open('sticker.png')
-img.resize((900, 1200)).save('cover-wechat.png')
-img.resize((200, 267)).save('thumbnail.png')
-"
+# 使用 ffmpeg 缩放（如需调整尺寸）
+ffmpeg -i sticker.png -vf "scale=900:1200:force_original_aspect_ratio=decrease,pad=900:1200:(ow-iw)/2:(oh-ih)/2" cover-wechat.png
+ffmpeg -i sticker.png -vf "scale=200:267:force_original_aspect_ratio=decrease,pad=200:267:(ow-iw)/2:(oh-ih)/2" thumbnail.png
 ```
 
 ### 公众号排版建议

@@ -20,8 +20,10 @@ DOCS_DIR = os.path.join(SKILL_DIR, 'docs')
 
 
 # 要复制的文档列表（技能内置只读文档）
+# 注意：session-log-template.md 不复制 — 由 generate_session_log.py 在工作流中直接渲染到项目
 SKILL_DOCS = [
     'content-format.md',
+    'copy.md',
     'frame-design.md',
     'image-generation.md',
     'output.md',
@@ -29,7 +31,6 @@ SKILL_DOCS = [
     'prompts-format.md',
     'qa.md',
     'remotion-projects.md',
-    'session-log-template.md',
     'workflow.md',
 ]
 

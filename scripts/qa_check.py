@@ -3,6 +3,7 @@
 qa_check.py - 贴图质量检查
 
 自动化检查贴图的尺寸、格式、文件名、词汇表合规性。
+不依赖 PIL，使用 struct 直接读取 PNG/GIF 头获取尺寸。
 
 Usage:
     python3 scripts/qa_check.py \
@@ -13,8 +14,7 @@ Usage:
     python3 scripts/qa_check.py --input assets/ --vocabulary docs/prompts-format.md
 """
 
-import os, re, argparse
-from PIL import Image
+import os, re, argparse, struct, json
 
 # ── 词汇表（来自 _vocab 共享模块）────────────────────────────
 try:
@@ -31,6 +31,40 @@ STANDARD_W = 1080
 STANDARD_H = 1440
 VALID_EXTS = {'.png', '.gif'}
 
+# ── 图片尺寸读取（不依赖 PIL）─────────────────────────────
+
+def get_image_size_png(path):
+    """读取 PNG 文件尺寸（PNG header: 4字节 width + 4字节 height at offset 16）"""
+    try:
+        with open(path, 'rb') as f:
+            f.seek(16)
+            w_h = f.read(8)
+            w, h = struct.unpack('>II', w_h)
+            return w, h
+    except Exception:
+        return None, None
+
+def get_image_size_gif(path):
+    """读取 GIF 文件尺寸（GIF header: 2字节 width + 2字节 height at offset 6）"""
+    try:
+        with open(path, 'rb') as f:
+            f.seek(6)
+            w_h = f.read(4)
+            w, h = struct.unpack('<HH', w_h)
+            return w, h
+    except Exception:
+        return None, None
+
+def get_image_size(path):
+    """根据扩展名读取图片尺寸"""
+    ext = os.path.splitext(path)[1].lower()
+    if ext == '.png':
+        return get_image_size_png(path)
+    elif ext == '.gif':
+        return get_image_size_gif(path)
+    else:
+        return None, None
+
 # ── 词汇表解析 ────────────────────────────────────────────
 
 def parse_vocabulary_from_md(vocab_path):
@@ -43,7 +77,6 @@ def parse_vocabulary_from_md(vocab_path):
         return None
 
     keys = set()
-    # 匹配 | `key` | emoji | 说明 |
     for match in re.finditer(r'\| `([^`]+)` \|', content):
         keys.add(match.group(1))
     return keys
@@ -97,14 +130,12 @@ def parse_prompts_vocabulary(prompts_dir):
 
 def check_size(img_path):
     """检查图片尺寸，返回 (ok, message)"""
-    try:
-        with Image.open(img_path) as img:
-            w, h = img.size
-        if w == STANDARD_W and h == STANDARD_H:
-            return True, f"{w}x{h}"
-        return False, f"{w}x{h} (期望 {STANDARD_W}x{STANDARD_H})"
-    except Exception as e:
-        return False, f"无法读取: {e}"
+    w, h = get_image_size(img_path)
+    if w is None:
+        return False, f"无法读取尺寸"
+    if w == STANDARD_W and h == STANDARD_H:
+        return True, f"{w}x{h}"
+    return False, f"{w}x{h} (期望 {STANDARD_W}x{STANDARD_H})"
 
 def check_format(fname):
     """检查文件扩展名"""
@@ -168,7 +199,6 @@ def main():
     input_path = args.input
     is_assets = os.path.isdir(input_path)
 
-    # 词汇表来源优先级：_vocab > prompts-format.md
     vocab_keys = None
     if _vocab_available:
         vocab_keys = VOCAB_KEYS
@@ -180,48 +210,41 @@ def main():
         else:
             print(f"[词汇表] 解析失败，跳过词汇表检查")
 
-    # 解析 prompts 的 visual_elements
     prompt_vocab = set()
     if args.prompts and os.path.isdir(args.prompts):
         prompt_vocab = parse_prompts_vocabulary(args.prompts)
         if prompt_vocab:
             print(f"[Prompts] 发现 {len(prompt_vocab)} 个 visual_elements key")
 
-    # 检查 assets 目录
     if is_assets:
         print(f"\n[检查] {input_path}\n")
         all_ok = True
 
-        for fname in sorted(os.listdir(input_path)):
-            fpath = os.path.join(input_path, fname)
-            if os.path.isdir(fpath):
-                continue
-            ext = os.path.splitext(fname)[1].lower()
-            if ext not in {'.png', '.gif', '.jpg', '.jpeg'}:
-                continue
+        valid_files = sorted([
+            f for f in os.listdir(input_path)
+            if not os.path.isdir(os.path.join(input_path, f))
+            and os.path.splitext(f)[1].lower() in {'.png', '.gif', '.jpg', '.jpeg'}
+        ])
 
+        for fname in valid_files:
+            fpath = os.path.join(input_path, fname)
             print(f"  📄 {fname}")
             file_ok = True
 
-            # 格式检查
-            fmt_ok, _ = check_format(fname)
+            fmt_ok, ext = check_format(fname)
             print_result('  格式', fmt_ok, ext if fmt_ok else f'不支持的格式({ext})')
             if not fmt_ok: file_ok = False
 
-            # 文件名检查
             fname_ok, _ = check_filename(fname)
             print_result('  文件名', fname_ok,
                         '正确' if fname_ok else f'不符合{STANDARD_W}x{STANDARD_H}命名规范')
             if not fname_ok: file_ok = False
 
-            # 尺寸检查
             size_ok, detail = check_size(fpath)
             print_result('  尺寸', size_ok, detail)
             if not size_ok: file_ok = False
 
-            # manifest 主题检查（仅第一个文件检查一次）
-            if fname == sorted(f for f in os.listdir(input_path)
-                               if os.path.splitext(f)[1].lower() in {'.png','.gif'})[0]:
+            if fname == valid_files[0]:
                 manifest_path = os.path.join(input_path, '..', 'sticker-manifest.md')
                 if os.path.exists(manifest_path):
                     from _vocab import THEMES as VALID_THEMES
@@ -237,7 +260,6 @@ def main():
                 all_ok = False
             print()
 
-        # 词汇表校验（prompts vs vocabulary）
         if vocab_keys and prompt_vocab:
             invalid = prompt_vocab - vocab_keys
             if invalid:
@@ -254,7 +276,6 @@ def main():
             print(f"\n❌ 检查未通过（有失败项）")
             __import__('sys').exit(1)
 
-    # 检查 prompts 目录
     elif os.path.isdir(input_path) and args.vocabulary:
         print(f"\n[词汇表检查] {input_path} vs {args.vocabulary}\n")
         prompt_keys = parse_prompts_vocabulary(input_path)

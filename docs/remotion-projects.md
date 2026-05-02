@@ -1,7 +1,8 @@
 # Remotion 项目结构
 
 本文档描述**阶段二（Remotion 帧导出）**生成的项目结构。
-利用 remotion-best-practices skill 来实践最佳实践，构建 Remotion 项目。
+
+> **核心规范**：微信贴图场景的 Remotion 核心规范（`<Composition>` 包装、竖屏字体规格、Sequence + AbsoluteFill 陷阱、CLI 限制）直接记录在本文档下方，无需外部 skill。
 
 ## 项目位置
 
@@ -26,28 +27,35 @@ import { StickerComponent } from './StickerComponent';
 registerRoot(StickerComponent);
 ```
 
-### src/StickerComponent.tsx — 外部组件（返回 Composition）
-
 ```tsx
 import React from 'react';
 import { Composition } from 'remotion';
 import { StickerContent } from './StickerContent';
 
-export const StickerComponent: React.FC = () => {
+type StickerComponentProps = {
+  totalFrames: number;
+  fps: number;
+  width: number;
+  height: number;
+};
+
+export const StickerComponent: React.FC<StickerComponentProps> = ({
+  totalFrames, fps, width, height,
+}) => {
   return (
     <Composition
       id="StickerComponent"
       component={StickerContent}
-      durationInFrames={1}
-      fps={30}
-      width={1080}
-      height={1440}
+      durationInFrames={totalFrames ?? 720}
+      fps={fps ?? 30}
+      width={width ?? 1080}
+      height={height ?? 1440}
     />
   );
 };
 ```
 
-**注意**：`StickerComponent` 不使用 `useCurrentFrame`，它只是一个返回 `<Composition>` 的外层包装。
+**注意**：必须使用 `??` 为 `<Composition>` 属性提供 fallback 值，否则 Discovery 阶段（`props=undefined`）会抛出验证错误。
 
 ### src/StickerContent.tsx — 内部组件（实际视觉）
 
@@ -139,6 +147,77 @@ npx remotion still src/index.tsx StickerComponent --output out.png
   一次性创建   约10-30s      约30-180s         成功/失败
 ```
 
+## 核心规范
+
+### 架构：必须用 `<Composition>` 包装
+
+禁止 `registerRoot` 直接传组件，否则 `useCurrentFrame()`、`spring()` 等 hooks 全部失效：
+
+```tsx
+// ✅ 正确 — Root.tsx 用 <Composition> 包装
+export const RemotionRoot = () => (
+  <Composition
+    id="StickerVideo"
+    component={StickerContent}
+    durationInFrames={90}
+    fps={30}
+    width={1080}
+    height={1440}
+  />
+);
+registerRoot(RemotionRoot);
+
+// ❌ 错误 — 直接传组件，hooks 上下文丢失
+registerRoot(StickerContent); // useCurrentFrame() 全部报错
+```
+
+### 包管理：只装 `remotion`
+
+```bash
+npm install remotion react react-dom
+# NOT: @remotion/core @remotion/react @remotion/cli（这些在 v4 不存在）
+```
+
+### Sequence + AbsoluteFill 陷阱
+
+在 `Sequence` 内直接用 `AbsoluteFill` 做 `justifyContent: 'center'` 居中——在 Chrome headless 下完全失效，文字渲染为空白/透明（max channel ~100 而非 255）。
+
+**正确模式：场景拆为独立组件**
+
+```tsx
+// ✅ 正确 — Scene 是独立组件，内部用 AbsoluteFill
+<Sequence from={0} durationInFrames={90}>
+  <SceneComponent />  {/* SceneComponent 内部调用 useCurrentFrame() */}
+</Sequence>
+
+// ❌ 错误 — AbsoluteFill 直接放 Sequence 内，居中失效
+<Sequence from={0} durationInFrames={90}>
+  <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
+    {/* 文字在 headless 下不可见 */}
+  </AbsoluteFill>
+</Sequence>
+```
+
+### 竖屏字体规格（1080×1440）
+
+| 元素 | 规格 | 说明 |
+|------|------|------|
+| 主标题 | ≤96px | 竖屏宽度有限，过大被裁剪 |
+| 正文 | ≤28px | 保持可读性 |
+| 辅助文字 | ≤22px | 说明注释等 |
+| 代码/mono | ≤20px | 窄屏易溢出 |
+| 左右 padding | ≥50px | 防止文字贴边 |
+
+### Chrome SSL 错误
+
+Remotion 下载 Chrome headless 失败（`unable to get local issuer certificate`）时，指定系统 Chrome：
+
+```ts
+// remotion.config.ts
+import { Config } from '@remotion/cli/config';
+Config.setBrowserExecutable('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
+```
+
 ## 故障排查
 
 | 错误信息 | 原因 | 解决方案 |
@@ -150,18 +229,58 @@ npx remotion still src/index.tsx StickerComponent --output out.png
 | `Module build failed...` | esbuild 编译 TSX 语法错误 | 检查模板字符串拼接是否产生语法错误 |
 | `No such file or directory` | 目录未创建 | 主循环前添加 `os.makedirs(args.output, exist_ok=True)` |
 
-## 自动降级路径
+## CLI 命令限制
+
+### `remotion still` 与 Discovery 阶段
+
+`npx remotion still` 命令存在架构限制：
+
+**Discovery 阶段**：当 Remotion 加载项目时，会立即调用 `registerRoot` 注册的工厂组件（`StickerComponent(undefined)`）来发现所有 `<Composition>` 定义。**此时 props 为 `undefined`**。
+
+**结果**：如果 `<Composition>` 的 `width`、`height`、`durationInFrames` 直接使用外层 props 而没有默认值，会抛出验证错误：
 
 ```
-AI 生成（第1位）
-    ↓ 异常
-Remotion 帧导出（第2位）
-    - 创建项目 `{项目根目录}/.remotion-sticker-{name}/`
-    - npm install + npx remotion still
-    - 成功 → 保存 PNG
-    - 失败 → 降级 PIL
-    ↓ 异常
-PIL 本地生成（第3位）
-    - 直接用 Pillow 绘制
-    - 保证最终能生成图片
+width prop must be a number, but passed undefined
 ```
+
+**解决方案**：在 `<Composition>` 的 JSX 属性中使用 `??`（nullish coalescing）提供默认值：
+
+```tsx
+// ✅ 正确 — Discovery 阶段 props=undefined 时使用 fallback
+<Composition
+  id="StickerComponent"
+  component={StickerContent}
+  durationInFrames={totalFrames ?? 720}
+  fps={fps ?? 30}
+  width={width ?? 1080}
+  height={height ?? 1440}
+/>
+
+// ❌ 错误 — Discovery 阶段 width=undefined 报错
+<Composition
+  width={width}  // undefined 时抛错
+  height={height}
+/>
+```
+
+### `--props` 参数无法穿透到 Composition 的 JSX 属性
+
+`--props` 传给 `registerRoot(StickerComponent)(props)`，但 `<Composition>` 的 `width`/`height`/`fps` 来自 **JSX 属性本身**，而非外层 props：
+
+```tsx
+// --props '{"width": 1080, "height": 1440}' 不影响这里
+<Composition
+  width={width ?? 1080}  // width 来自外层 props，不是 --props
+  height={height ?? 1440}
+/>
+```
+
+这是 Remotion Composition 工厂模式的已知限制。正式渲染时应通过 `--props` 传参给 `StickerContent`（实际视觉组件），而非 `<Composition>` 的外层属性。
+
+### 渲染尺寸可能不等于预期尺寸
+
+`remotion still` 的输出尺寸可能因 Remotion 内部缩放逻辑而略大于 `<Composition>` 的 `width`×`height`（如预期 1080×1440，实际输出 1523×2030）。这是 Remotion 内部行为，不影响内容正确性。
+
+## 异常处理
+
+Remotion 帧导出失败时直接报错，不再降级。

@@ -205,46 +205,6 @@ def filter_valid_keys(keys):
     return valid, invalid
 
 
-# ── 字体（带缓存）────────────────────────────────────────────
-
-_FONT_CACHE = {}   # {size: ImageFont}
-
-FONT_PATHS = [
-    # macOS
-    "/System/Library/Fonts/PingFang.ttc",
-    "/System/Library/Fonts/STHeiti Light.ttc",
-    "/System/Library/Fonts/Hiragino Sans GB.ttc",
-    "/Library/Fonts/Arial Unicode.ttf",
-    # Linux
-    "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    # Windows
-    "C:/Windows/Fonts/seguiemj.ttf",
-]
-
-
-def get_font(size=60):
-    """
-    加载支持 emoji 的字体（带模块级缓存）。
-    依次尝试 FONT_PATHS 中的路径，返回第一个可用字体。
-    """
-    if size in _FONT_CACHE:
-        return _FONT_CACHE[size]
-    from PIL import ImageFont
-    import os
-    for path in FONT_PATHS:
-        if os.path.exists(path):
-            try:
-                font = ImageFont.truetype(path, size)
-                _FONT_CACHE[size] = font
-                return font
-            except Exception:
-                continue
-    font = ImageFont.load_default(size)
-    _FONT_CACHE[size] = font
-    return font
-
-
 # ── 解析 ───────────────────────────────────────────────────
 
 def _parse_list(s):

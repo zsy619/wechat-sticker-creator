@@ -1,20 +1,20 @@
 ---
 name: wechat-sticker-skill
 description: Create WeChat emoji sticker series from any input (URL, topic, or content). Use when user asks to "做微信贴图", "微信贴图", "创建微信贴图包", "WeChat stickers", "微信emoji", "根据内容生成贴图", "做一套贴图", "生成贴图". Triggers on sticker creation, emoji design, reaction images, or any WeChat sticker-related request.
-version: 4.8.3
-tags: ["wechat", "sticker", "emoji", "表情包", "贴图", "微信贴图", "frame-generation"]
+version: 4.9.0
+tags: ["微信", "贴图", "表情包", "微信表情包", "微信贴图", "帧动画", "图片生成"]
 metadata:
   author: zhushuyan
-  updated: "2026-05-02"
+  updated: "2026-05-03"
 ---
 
 > **更新日志**：所有变更记录在 [CHANGELOG.md](./CHANGELOG.md)。
 
-# 微信贴图生成器 v4.8.3 (WeChat Sticker Creator)
+# 微信贴图生成器 v4.9.0 (WeChat Sticker Creator)
 
 本技能根据用户输入（链接、主题或内容），自动进行内容聚合、贴图设计和生成，输出一套完整的微信表情包。
 
-## 核心设计：三段式图像生成
+## 核心设计：两段式图像生成
 
 ```
 用户输入(链接/主题/内容)
@@ -29,14 +29,13 @@ metadata:
 │     建独立 Remotion 项目，每张贴图对应每帧 = <Composition> 组件
 │     导出 **GIF**（90帧动画），独特视觉设计 + 动画特效                              │
 │     ↓ 异常                                              │
-│  ③ PIL 本地生成（兜底）                                 │
-│     词汇表驱动，场景构图，程序化几何绘制                 │
+│  报错停止（不再降级）                                   │
 └────────────────────────────────────────────────────────┘
     ↓
 最终输出（ZIP / 公众号发布）
 ```
 
-**优先级**：AI → Remotion → PIL。每层失败自动降级，无需人工干预。
+**优先级**：AI → Remotion。Remotion 失败则报错，不再降级。
 
 ## skill 项目结构
 
@@ -60,22 +59,23 @@ wechat-stickers/                    ← 技能根目录
 │   ├── generate_content_analysis.py      ← 节点①：内容聚合分析（URL/主题/文本 → content-analysis.md）
 │   ├── generate_manifest.py               ← 节点②：manifest 生成（含 vocabulary 校验）
 │   ├── generate_prompts.py               ← 节点③：prompts 文件生成（含 vocabulary 校验）
-│   ├── generate_frames.py                ← 节点④：图片生成（AI → Remotion → PIL 三段式降级）
-│   ├── pil_fallback.py                   ← PIL 兜底生成器（独立脚本，亦可单独使用）
+│   ├── generate_frames.py                ← 节点④：图片生成（AI → Remotion 两段式）
 │   ├── pack_stickers.py                  ← 节点⑤：打包 ZIP + 生成封面/缩略图
 │   ├── qa_check.py                       ← 节点⑥：QA 自动化检查（尺寸/格式/词汇表）
 │   ├── generate_tags.py                  ← 标签生成（manifest/prompts → tags.md）
 │   ├── generate_session_log.py            ← Session Log 生成（project/docs/session-log.md）
+│   ├── generate_post.py                   ← post.md 生成（微信公众号推广文档）
 │   └── copy_docs.py                      ← 技能文档复制到项目 docs/
 │
 └── docs/                                ← 规范文档（按需复制到项目 docs/）
     ├── workflow.md                       ← 核心工作流
     ├── prompts-format.md                ← Prompt 生成规范
     ├── content-format.md                ← 内容格式（content-analysis / manifest / prompts）
+    ├── copy.md                          ← 文档复制说明（哪些复制、哪些生成）
     ├── frame-design.md                  ← Remotion 帧设计规范
     ├── remotion-projects.md             ← Remotion 项目完整结构
     ├── project-structure.md              ← 项目目录结构
-    ├── image-generation.md              ← 三段式图像生成流程
+    ├── image-generation.md              ← 两段式图像生成流程
     ├── output.md                        ← 最终输出与打包
     ├── qa.md                            ← 质量检查
     └── session-log-template.md          ← Session Log 模板（由 generate_session_log.py 使用，不拷贝到项目）
@@ -112,7 +112,7 @@ python3 scripts/generate_prompts.py \
   --input wechat-stickers/ai-coding-assistant/sticker-manifest.md \
   --output wechat-stickers/ai-coding-assistant/prompts/
 
-# 步骤4：图片生成（三段式降级）
+# 步骤4：图片生成（两段式：AI → Remotion）
 python3 scripts/generate_frames.py \
   --input wechat-stickers/ai-coding-assistant/prompts/ \
   --output wechat-stickers/ai-coding-assistant/assets-cyberpunk/ \
@@ -126,12 +126,6 @@ python3 scripts/pack_stickers.py \
 python3 scripts/qa_check.py \
   --input wechat-stickers/ai-coding-assistant/assets-cyberpunk/ \
   --vocabulary docs/prompts-format.md
-
-# ── 单独使用 PIL 兜底（完全离线）──────────────────────
-python3 scripts/pil_fallback.py \
-  --input prompts/ \
-  --output assets-pil/ \
-  --theme cyberpunk
 ```
 
 ### --mode 参数
@@ -140,10 +134,9 @@ python3 scripts/pil_fallback.py \
 
 | 值 | 行为 |
 |----|------|
-| `auto`（默认） | AI → Remotion → PIL 自动降级 |
+| `auto`（默认） | AI → Remotion 两段式 |
 | `ai` | 仅 AI 生成，失败则整张贴图失败 |
-| `remotion` | 仅 Remotion 生成，失败则降级 PIL |
-| `pil` | 仅 PIL 生成（最稳定，完全离线） |
+| `remotion` | 仅 Remotion 生成，失败则报错 |
 
 ### 新增参数（v4.4.0）
 
@@ -166,15 +159,16 @@ python3 scripts/pil_fallback.py \
 
 ### 为什么是 Remotion？
 
-PIL 的程序化绘制有上限——无法生成真正的语义图像（大模型理解"赛博朋克风格 AI 大脑"的细节远超过几何堆叠）。Remotion 作为 React 组件，可以用代码精确控制每一帧的视觉元素，适合需要高质量、独特视觉设计的贴图。
+Remotion 作为 React 组件，可以用代码精确控制每一帧的视觉元素，适合需要高质量、独特视觉设计的贴图。
 
-### 三段式降级机制
+### 两段式降级机制
 
 | 优先级 | 方式 | 优势 | 劣势 |
 |--------|------|------|------|
 | 1 | AI生成 | 语义理解、真实光影、细节丰富 | API成本、调用失败可能 |
 | 2 | Remotion帧导出 | 像素级控制、程序化精确、动画可能 | 需要Node.js环境、帧组件编写 |
-| 3 | PIL | 无需网络、完全本地、执行稳定 | 视觉上限低、程序化几何 |
+
+Remotion 失败则报错，不再降级。
 
 ### Remotion 帧设计原则
 

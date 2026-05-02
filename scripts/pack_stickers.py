@@ -3,6 +3,7 @@
 pack_stickers.py - 贴图打包与封面生成
 
 将 assets-{theme}/ 目录下的贴图打包为 ZIP，并可选生成公众号封面和缩略图。
+全部使用 ffmpeg，不依赖 PIL。
 
 Usage:
     python3 scripts/pack_stickers.py \
@@ -16,8 +17,7 @@ Usage:
         --thumbnail 200x267
 """
 
-import os, re, argparse, zipfile
-from PIL import Image
+import os, re, argparse, zipfile, subprocess, shutil, tempfile
 
 # ── 封面规格 ──────────────────────────────────────────────
 
@@ -39,12 +39,7 @@ def natural_sort_key(s):
     return [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', s)]
 
 def find_sticker_files(input_dir, filter_ext=None):
-    """找到所有贴图文件，按文件名排序。可选按扩展名过滤。
-    
-    Args:
-        input_dir: 输入目录
-        filter_ext: 过滤扩展名，如 '.gif' 或 '.png'，None 则不过滤
-    """
+    """找到所有贴图文件，按文件名排序。可选按扩展名过滤。"""
     valid_exts = {'.png', '.gif', '.jpg', '.jpeg', '.webp'}
     files = []
     for f in os.listdir(input_dir):
@@ -55,8 +50,20 @@ def find_sticker_files(input_dir, filter_ext=None):
             files.append(f)
     return sorted(files, key=natural_sort_key)
 
+def _run(cmd, capture=True):
+    """执行 ffmpeg 命令，返回是否成功"""
+    try:
+        result = subprocess.run(
+            cmd, shell=True,
+            capture_output=capture, text=True,
+            timeout=120
+        )
+        return result.returncode == 0, result.stdout, result.stderr
+    except Exception as e:
+        return False, '', str(e)
+
 def generate_cover(input_dir, output_path, size, filter_ext=None):
-    """生成封面图：将前6张贴图缩放后横向拼接"""
+    """生成封面图：将前6张贴图缩放后横向拼接（ffmpeg tile）"""
     w, h = size
     files = find_sticker_files(input_dir, filter_ext)[:6]
 
@@ -64,30 +71,36 @@ def generate_cover(input_dir, output_path, size, filter_ext=None):
         print(f"[警告] 未找到贴图文件，无法生成封面", file=__import__('sys').stderr)
         return False
 
-    thumb_w = w // len(files)
-    thumb_h = h
-    canvas = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # 将前6张按序编号
+        for i, fname in enumerate(files):
+            src = os.path.join(input_dir, fname)
+            dst = os.path.join(tmpdir, f"{i:02d}{os.path.splitext(fname)[1]}")
+            shutil.copy2(src, dst)
 
-    for i, fname in enumerate(files):
-        fpath = os.path.join(input_dir, fname)
-        try:
-            img = Image.open(fpath).convert('RGBA')
-            # 裁剪为 3:4 后缩放
-            src_w, src_h = img.size
-            crop_h = int(src_w * 3 / 4)
-            top = (src_h - crop_h) // 2
-            img = img.crop((0, top, src_w, top + crop_h))
-            img = img.resize((thumb_w, thumb_h), Image.LANCZOS)
-            canvas.paste(img, (i * thumb_w, 0), img)
-        except Exception as e:
-            print(f"[警告] 封面第{i+1}张处理失败: {fname} ({e})")
+        # ffmpeg tile 拼接：6图横向排列，每张高 h，步长 h（保持3:4比例裁剪）
+        cols = len(files)
+        thumb_w = w // cols
+        thumb_h = h
 
-    canvas.save(output_path, 'PNG')
-    print(f"  ✅ 封面: {output_path} ({w}x{h})")
-    return True
+        # tile=6x1:layout=0_0:padding=0:color=0x00000000
+        cmd = (
+            f"ffmpeg -y -hide_banner -loglevel error "
+            f"-framerate 1 "
+            f"-i '{tmpdir}/%02d.png' "
+            f"-vf 'scale={thumb_w}:{thumb_h}:force_original_aspect_ratio=increase,crop={thumb_w}:{thumb_h},tile={cols}x1:layout=0_0' "
+            f"-frames:v 1 '{output_path}'"
+        )
+        ok, stdout, stderr = _run(cmd)
+        if ok:
+            print(f"  ✅ 封面: {output_path} ({w}x{h})")
+            return True
+        else:
+            print(f"[警告] 封面生成失败: {stderr}")
+            return False
 
 def generate_thumbnail(input_dir, output_path, size, filter_ext=None):
-    """生成缩略图：将所有贴图缩放后纵向拼接（最多20张，4×5网格布局）"""
+    """生成缩略图：将所有贴图缩放后纵向拼接（ffmpeg tile，最多20张）"""
     w, h = size
     files = find_sticker_files(input_dir, filter_ext)
 
@@ -95,31 +108,32 @@ def generate_thumbnail(input_dir, output_path, size, filter_ext=None):
         print(f"[警告] 未找到贴图文件，无法生成缩略图", file=__import__('sys').stderr)
         return False
 
-    # P2-7: 限制最多20张（4列×5行），避免每行高度过小
     MAX_THUMB = 20
     files = files[:MAX_THUMB]
-
     thumb_w = w
-    count = max(1, len(files))
-    thumb_h = h // count  # floor除法，超出部分截断而非崩溃
-    canvas = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    count = len(files)
+    thumb_h = max(1, h // count)
 
-    for i, fname in enumerate(files):
-        fpath = os.path.join(input_dir, fname)
-        try:
-            img = Image.open(fpath).convert('RGBA')
-            src_w, src_h = img.size
-            crop_h = int(src_w * 3 / 4)
-            top = (src_h - crop_h) // 2
-            img = img.crop((0, top, src_w, top + crop_h))
-            img = img.resize((thumb_w, thumb_h), Image.LANCZOS)
-            canvas.paste(img, (0, i * thumb_h), img)
-        except Exception as e:
-            print(f"[警告] 缩略图第{i+1}张处理失败: {fname} ({e})")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for i, fname in enumerate(files):
+            src = os.path.join(input_dir, fname)
+            dst = os.path.join(tmpdir, f"{i:02d}{os.path.splitext(fname)[1]}")
+            shutil.copy2(src, dst)
 
-    canvas.save(output_path, 'PNG')
-    print(f"  ✅ 缩略图: {output_path} ({w}x{h}, {len(files)} 张)")
-    return True
+        cmd = (
+            f"ffmpeg -y -hide_banner -loglevel error "
+            f"-framerate 1 "
+            f"-i '{tmpdir}/%02d.png' "
+            f"-vf 'scale={thumb_w}:{thumb_h}:force_original_aspect_ratio=increase,crop={thumb_w}:{thumb_h},tile=1x{count}:layout=0_0' "
+            f"-frames:v 1 '{output_path}'"
+        )
+        ok, stdout, stderr = _run(cmd)
+        if ok:
+            print(f"  ✅ 缩略图: {output_path} ({w}x{h}, {len(files)} 张)")
+            return True
+        else:
+            print(f"[警告] 缩略图生成失败: {stderr}")
+            return False
 
 def create_zip(input_dir, output_path, filter_ext=None):
     """将 input_dir 下的贴图打包为 ZIP，可选按扩展名过滤"""
@@ -152,7 +166,6 @@ def main():
                      help='只打包 PNG 文件，忽略 GIF/JPG')
     args = ap.parse_args()
 
-    # P2-6: 确定过滤扩展名
     if args.gif_only:
         filter_ext = '.gif'
     elif args.png_only:
@@ -164,7 +177,6 @@ def main():
         print(f"[错误] 目录不存在: {args.input}", file=__import__('sys').stderr)
         __import__('sys').exit(1)
 
-    # 输出目录
     output_dir = os.path.dirname(os.path.abspath(args.output)) or '.'
     os.makedirs(output_dir, exist_ok=True)
 

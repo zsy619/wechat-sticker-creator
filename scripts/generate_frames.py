@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 """
-generate_frames.py - 微信贴图三段式生成器 v4.4.0
+generate_frames.py - 微信贴图两段式生成器 v4.9.0
 
-优先级：AI → Remotion → PIL
-每层失败自动降级，无需人工干预。
+优先级：AI → Remotion
+AI 失败后尝试 Remotion，Remotion 失败则报错不再降级。
 
 输出格式：
   - AI 模式：PNG
-  - Remotion 模式：GIF（90帧动画，由 Remotion 序列帧 + PIL 合成）
-  - PIL 模式：PNG
+  - Remotion 模式：GIF（90帧动画，由 Remotion 序列帧 + ffmpeg 合成）
 
 Usage:
     python3 generate_frames.py --input prompts/ --output assets/ --theme cyberpunk
-    python3 generate_frames.py --input prompts/ --output assets/ --theme cyberpunk --mode pil
     python3 generate_frames.py --input prompts/ --output assets/ --theme cyberpunk --mode remotion
     python3 generate_frames.py --input prompts/ --output assets/ --theme cyberpunk --continue-on-error
     python3 generate_frames.py --input prompts/ --output assets/ --theme cyberpunk --debug-remotion
@@ -21,9 +19,8 @@ Usage:
     python3 generate_frames.py --input prompts/ --output assets/ --theme cyberpunk --dry-run
 """
 
-import os, sys, json, time, glob, subprocess, argparse, re, threading
+import os, sys, json, time, glob, subprocess, argparse, re
 import urllib.request, urllib.error
-from concurrent.futures import ThreadPoolExecutor
 
 # ── 常量 ───────────────────────────────────────────────────
 W, H = 1080, 1440
@@ -116,35 +113,6 @@ _EMOJI_FALLBACK = {
 }
 
 # ── 辅助函数 ────────────────────────────────────────────────
-
-FONT_CACHE = {}
-
-def get_font(size=60):
-    """加载支持 emoji 的字体，优先使用系统字体"""
-    if size in FONT_CACHE:
-        return FONT_CACHE[size]
-    font_paths = [
-        "/System/Library/Fonts/PingFang.ttc",
-        "/System/Library/Fonts/STHeiti Light.ttc",
-        "/System/Library/Fonts/Hiragino Sans GB.ttc",
-        "/Library/Fonts/Arial Unicode.ttf",
-        "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "C:/Windows/Fonts/seguiemj.ttf",
-    ]
-    from PIL import ImageFont
-    for path in font_paths:
-        try:
-            font = ImageFont.truetype(path, size)
-            FONT_CACHE[size] = font
-            log(f"[字体] 加载成功: {path}", "INFO")
-            return font
-        except Exception:
-            continue
-    font = ImageFont.load_default(size)
-    log(f"[字体] 警告：未找到 emoji 字体，使用默认位图字体", "WARN")
-    FONT_CACHE[size] = font
-    return font
 
 def hex_to_rgb(h):
     h = h.lstrip('#')
@@ -578,16 +546,15 @@ def _render_remotion_still(project_dir, sticker_index, total_stickers):
 def _frames_to_gif(frame_dir_or_paths, output_gif_path, fps=30):
     """
     将帧目录或帧路径列表合成为 GIF。
-    优先使用 PIL（内置，无需额外依赖）。
+    使用 ffmpeg paletteuse（高质量 GIF），无需 PIL。
     """
-    from PIL import Image
+    import tempfile, subprocess as _sp
 
-    # 兼容两种调用方式：目录路径 或 路径列表
     if isinstance(frame_dir_or_paths, str):
         frame_files = sorted([
             os.path.join(frame_dir_or_paths, f)
             for f in os.listdir(frame_dir_or_paths)
-            if f.endswith('.png') or f.endswith('.jpg')
+            if f.lower().endswith(('.png', '.jpg', '.jpeg'))
         ])
     else:
         frame_files = list(frame_dir_or_paths)
@@ -595,29 +562,38 @@ def _frames_to_gif(frame_dir_or_paths, output_gif_path, fps=30):
     if not frame_files:
         raise RuntimeError("无可用帧")
 
-    # 读取所有帧（延迟加载以节省内存）
-    images = []
-    for fp in frame_files:
-        try:
-            img = Image.open(fp).convert("RGBA")
-            images.append(img)
-        except Exception as e:
-            log(f"[GIF] 跳过损坏帧 {fp}: {e}", "WARN")
-            continue
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # 符号链接帧为顺序文件名
+        for i, fp in enumerate(frame_files):
+            ext = os.path.splitext(fp)[1]
+            os.symlink(os.path.abspath(fp), os.path.join(tmpdir, f"{i:04d}{ext}"))
 
-    if not images:
-        raise RuntimeError("无可用帧生成 GIF")
+        # 生成调色板
+        palette_cmd = (
+            f"ffmpeg -y -hide_banner -loglevel error "
+            f"-framerate {fps} -i '{tmpdir}/%04d.png' "
+            f"-vf palettegen=/tmp/sticker_palette.png"
+        )
+        _sp.run(palette_cmd, shell=True)
 
-    # 保存 GIF（duration = 1000/fps ms per frame）
-    duration_ms = int(1000 / fps)
-    images[0].save(
-        output_gif_path,
-        save_all=True,
-        append_images=images[1:],
-        duration=duration_ms,
-        loop=0,
-    )
-    log(f"[GIF] 已合成 {len(images)} 帧 → {output_gif_path}", "OK")
+        # 合成 GIF
+        gif_cmd = (
+            f"ffmpeg -y -hide_banner -loglevel error "
+            f"-framerate {fps} -i '{tmpdir}/%04d.png' "
+            f"-i /tmp/sticker_palette.png "
+            f"-lavfi paletteuse '{output_gif_path}'"
+        )
+        ok = _sp.run(gif_cmd, shell=True).returncode == 0
+        if not ok:
+            # fallback: 直接合成（无调色板）
+            fallback_cmd = (
+                f"ffmpeg -y -hide_banner -loglevel error "
+                f"-framerate {fps} -i '{tmpdir}/%04d.png' "
+                f"-loop 0 '{output_gif_path}'"
+            )
+            _sp.run(fallback_cmd, shell=True)
+
+    log(f"[GIF] 已合成 {len(frame_files)} 帧 → {output_gif_path}", "OK")
 
 
 def generate_remotion_gif(name, copy, visual_elements, theme_key, output_path,
@@ -641,8 +617,7 @@ def generate_remotion_gif(name, copy, visual_elements, theme_key, output_path,
     timeout = max(120, estimated_frames * 2)
 
     # 渲染 90 帧序列（每 3 帧取 1 帧 = 30 帧 GIF，文件更小）
-    # 或者渲染全 90 帧 → PIL 合成
-    # 这里采用：渲染全 90 帧，用 PIL 合成 GIF
+    # 渲染全 90 帧 → ffmpeg paletteuse 合成
     frames_dir = os.path.join(project_dir, "frames", f"sticker_{sticker_index}")
     os.makedirs(frames_dir, exist_ok=True)
 
@@ -679,8 +654,8 @@ def generate_remotion_gif(name, copy, visual_elements, theme_key, output_path,
         failure_rate = len(failed_frames) / FRAMES_PER_STICKER
         log(f"[Remotion] {name}: {len(failed_frames)}/{FRAMES_PER_STICKER} 帧失败（{failure_rate*100:.0f}%）", "WARN")
         if failure_rate > 0.5:
-            # 超过 50% 帧失败，降级到 PIL
-            raise RuntimeError(f"渲染失败率 {failure_rate*100:.0f}% > 50%，降级到 PIL")
+            # 超过 50% 帧失败，抛出错误
+            raise RuntimeError(f"渲染失败率 {failure_rate*100:.0f}% > 50%，Remotion 模式失败")
 
     # 检查可用帧数
     available_frames = [
@@ -689,7 +664,7 @@ def generate_remotion_gif(name, copy, visual_elements, theme_key, output_path,
         os.path.getsize(os.path.join(frames_dir, f)) > 512
     ]
     if len(available_frames) < 10:
-        raise RuntimeError(f"可用帧数不足（{len(available_frames)} < 10），降级到 PIL")
+        raise RuntimeError(f"可用帧数不足（{len(available_frames)} < 10），Remotion 模式失败")
 
     # 合成 GIF（每隔 3 帧取一帧 = 30 帧 @ 30fps = 1 秒）
     # 实际上我们希望 3 秒 GIF，取全帧或降采样
@@ -824,7 +799,8 @@ def generate_ai_image(name, copy, style_keyword, theme_key, output_path):
         try:
             image_url = _call_ai_provider(p, prompt)
 
-            # 下载图片
+            # 下载图片并用 ffmpeg 裁剪缩放为标准尺寸
+            import tempfile, subprocess as _sp
             if image_url.startswith('data:'):
                 import base64
                 b64 = image_url.split(',')[1]
@@ -834,24 +810,21 @@ def generate_ai_image(name, copy, style_keyword, theme_key, output_path):
                 with urllib.request.urlopen(req, timeout=30) as r:
                     img_data = r.read()
 
-            from PIL import Image
-            import io
-            img = Image.open(io.BytesIO(img_data)).convert("RGBA")
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_in:
+                tmp_in.write(img_data)
+                tmp_in.flush()
+                tmp_in.name  # 保持文件路径
 
-            # 竖版 3:4 中心裁剪
-            img_w, img_h = img.size
-            target_ratio   = W / H
-            current_ratio = img_w / img_h
-            if current_ratio > target_ratio:
-                new_w   = int(img_h * target_ratio)
-                offset_x = (img_w - new_w) // 2
-                img = img.crop((offset_x, 0, offset_x + new_w, img_h))
-            elif current_ratio < target_ratio:
-                new_h   = int(img_w / target_ratio)
-                offset_y = (img_h - new_h) // 2
-                img = img.crop((0, offset_y, img_w, offset_y + new_h))
-            img = img.resize((W, H), Image.LANCZOS)
-            img.save(output_path, "PNG")
+            out_cmd = (
+                f"ffmpeg -y -hide_banner -loglevel error "
+                f"-i '{tmp_in.name}' "
+                f"-vf 'scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}' "
+                f"'{output_path}'"
+            )
+            ok = _sp.run(out_cmd, shell=True).returncode == 0
+            os.unlink(tmp_in.name)
+            if not ok:
+                raise RuntimeError("ffmpeg 裁剪失败")
 
             log(f"[AI:{p['name']}] {name} 生成成功", "OK")
             return True
@@ -875,114 +848,17 @@ def generate_ai_image(name, copy, style_keyword, theme_key, output_path):
 
 
 # ═══════════════════════════════════════════════════════════════
-# 阶段三：PIL 兜底（与 v4.3.5 保持一致）
-# ═══════════════════════════════════════════════════════════════
-
-def pil_fallback(name, copy, visual_elements, theme_key, output_path):
-    """PIL 本地生成（兜底方案）"""
-    from PIL import Image, ImageDraw
-
-    theme    = THEMES.get(theme_key, THEMES['cyberpunk'])
-    primary  = hex_to_rgb(theme['primary'])
-    secondary = hex_to_rgb(theme['secondary'])
-
-    img  = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-
-    bg_rgb = hex_to_rgb(theme['bg'])
-    draw.rectangle([0, 0, W, H], fill=bg_rgb + (255,))
-
-    cx, cy = W // 2, H // 2 - 60
-    elem_fns = {
-        'brain':          lambda: draw.ellipse([cx-150,cy-150,cx+150,cy+150], fill=primary+(80,)),
-        'neural_network': lambda: [
-            draw.ellipse([cx-200+nx*80, cy-100+ny*60, cx-200+nx*80+24, cy-100+ny*60+24],
-                        fill=primary+(180,) if (nx+ny)%2==0 else secondary+(180,))
-            for nx in range(6) for ny in range(4)],
-        'terminal':       lambda: draw.rectangle([cx-300,cy-175,cx+300,cy+175], fill=(15,15,28,255), outline=primary+(200,), width=2),
-        'math_canvas':    lambda: draw.rectangle([cx-380,cy-250,cx+380,cy+250], fill=(10,10,10,255)),
-        'ai_chip':        lambda: draw.rectangle([cx-120,cy-120,cx+120,cy+120], fill=primary+(60,), outline=primary+(200,), width=3),
-        'spotlight':      lambda: (draw.ellipse([cx-200,cy-250,cx+200,cy+250], fill=(255,255,200,25)), draw.ellipse([cx-100,cy-150,cx+100,cy+150], fill=(255,255,200,40))),
-        'network_node':   lambda: [draw.ellipse([cx-180+nx*90,cy-90+ny*70,cx-180+nx*90+20,cy-90+ny*70+20], fill=primary+(200,)) for nx in range(5) for ny in range(3)],
-        'button':         lambda: draw.rectangle([cx-150,cy-60,cx+150,cy+60], fill=primary+(200,), outline=primary+(255,), width=3),
-        'lightning':      lambda: draw.text((cx-50,cy-80), "⚡", fill=(255,255,255,255), font=get_font(80)),
-        'heart':          lambda: draw.text((cx-60,cy-60), "❤", fill=(255,60,90,255), font=get_font(80)),
-        'equals_sign':    lambda: draw.text((cx-50,cy-50), "=", fill=(255,255,255,255), font=get_font(80)),
-        'question_mark':  lambda: draw.text((cx-30,cy-40), "?", fill=primary+(255,), font=get_font(80)),
-        'eraser':         lambda: draw.text((cx-40,cy-40), "🧹", fill=(200,150,100,255), font=get_font(60)),
-        'checkmark':      lambda: draw.text((cx-40,cy-40), "✓", fill=(0,255,136,255), font=get_font(80)),
-        'code':           lambda: (draw.rectangle([cx-300,cy-175,cx+300,cy+175], fill=(15,15,28,255), outline=primary+(200,), width=2), draw.text((cx-240,cy-100),">>>", fill=(0,255,136,255), font=get_font(48)), draw.text((cx-240,cy-40),"def f(x):", fill=(0,200,255,255), font=get_font(40)), draw.text((cx-240,cy+20),"    return x", fill=(150,150,150,255), font=get_font(36))),
-        'algorithm':      lambda: (draw.rectangle([cx-260,cy-200,cx-60,cy-120], fill=primary+(60,), outline=primary+(200,), width=2), draw.rectangle([cx-60,cy-200,cx+140,cy-120], fill=secondary+(60,), outline=secondary+(200,), width=2), draw.rectangle([cx-160,cy-60,cx+40,cy+20], fill=primary+(60,), outline=primary+(200,), width=2), draw.text((cx-200,cy-170),"IN", fill=(255,255,255,255), font=get_font(32)), draw.text((cx-10,cy-170),"PROC", fill=(255,255,255,255), font=get_font(32)), draw.text((cx-120,cy-30),"OUT", fill=(255,255,255,255), font=get_font(32))),
-        'function':        lambda: draw.text((cx-200,cy-40),"ƒ(x) =", fill=primary+(255,), font=get_font(72)),
-        'variable':        lambda: (draw.text((cx-120,cy-40),"x =", fill=primary+(255,), font=get_font(72)), draw.text((cx+20,cy-30),"???", fill=secondary+(255,), font=get_font(56))),
-        'bio':            lambda: [(draw.ellipse([cx-160+ny*40-8,cy-120+ny*30-8,cx-160+ny*40+8,cy-120+ny*30+8], fill=primary+(180,)), draw.ellipse([cx+160-ny*40-8,cy-120+ny*30-8,cx+160-ny*40+8,cy-120+ny*30+8], fill=secondary+(180,)), draw.line([cx-160+ny*40,cy-120+ny*30,cx+160-ny*40,cy-120+ny*30], fill=primary+(80,), width=2)) for ny in range(9)],
-        'secret':         lambda: (draw.text((cx-140,cy-50),"***", fill=(255,215,0,255), font=get_font(80)), draw.text((cx-200,cy+50),"CLASSIFIED", fill=(255,100,100,255), font=get_font(28))),
-    }
-
-    try:
-        from _vocab import EMOJI_MAP
-        emoji_map = EMOJI_MAP
-    except ImportError:
-        emoji_map = _EMOJI_FALLBACK
-
-    for elem in visual_elements:
-        fn = elem_fns.get(elem)
-        if fn:
-            fn()
-
-    # 未匹配 elem_fns 的 key 横向排列为 emoji（最多 4 个，均匀分布）
-    emoji_elements = [e for e in visual_elements if e not in elem_fns]
-    if emoji_elements:
-        max_emoji = 4
-        shown = emoji_elements[:max_emoji]
-        total_w = len(shown) * 120
-        start_x = cx - total_w // 2
-        for i, elem in enumerate(shown):
-            emoji = emoji_map.get(elem, elem)
-            ex = start_x + i * 120
-            draw.text((ex, cy - 80), emoji, fill=(255, 255, 255, 255), font=get_font(80))
-
-    font = get_font(60)
-    tw = sum(font.getbbox(c)[2] for c in copy)
-    th = int(60 * 1.4)
-    tx = (W - tw) // 2
-    ty = H - th - 30
-    draw.text((tx, ty), copy, fill=hex_to_rgb(theme['text']) + (255,), font=font)
-
-    img.save(output_path, "PNG")
-    log(f"[PIL] {name} 生成成功", "OK")
-    return True
-
-
-# ═══════════════════════════════════════════════════════════════
-# P3-3: 后台 PIL 预计算
-# ═══════════════════════════════════════════════════════════════
-
-_pil_precomputed = {}   # {sticker_index: output_path}
-_pil_precompute_errors = {}  # {sticker_index: error_msg}
-
-def _background_pil_worker(idx, name, copy, v_elems, theme, output):
-    """后台线程：PIL 预计算（Remotion 渲染期间同时进行）"""
-    try:
-        pil_fallback(name, copy, v_elems, theme, output)
-        _pil_precomputed[idx] = output
-    except Exception as e:
-        _pil_precompute_errors[idx] = str(e)
-
-
-# ═══════════════════════════════════════════════════════════════
 # 主入口
 # ═══════════════════════════════════════════════════════════════
 
 def main():
     global _args
     ap = argparse.ArgumentParser(
-        description='微信贴图三段式生成器 v4.4.0',
+        description='微信贴图两段式生成器 v4.9.0（AI → Remotion）',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
   python3 generate_frames.py --input prompts/ --output assets/ --theme cyberpunk
-  python3 generate_frames.py --input prompts/ --output assets/ --mode pil
   python3 generate_frames.py --input prompts/ --output assets/ --mode remotion
   python3 generate_frames.py --input prompts/ --output assets/ --continue-on-error
   python3 generate_frames.py --input prompts/ --output assets/ --debug-remotion
@@ -994,7 +870,7 @@ def main():
     ap.add_argument('--input',             required=True,  help='prompts/ 目录路径或单个 .md 文件')
     ap.add_argument('--output',            required=True,  help='输出目录路径')
     ap.add_argument('--theme',             default='cyberpunk', help='主题风格（default: cyberpunk）')
-    ap.add_argument('--mode',             choices=['auto','ai','remotion','pil'],
+    ap.add_argument('--mode',             choices=['auto','ai','remotion'],
                                             default='auto', help='生成模式（default: auto）')
     ap.add_argument('--continue-on-error', action='store_true',
                                             help='某张贴图失败时继续处理下一张（default: False）')
@@ -1006,11 +882,9 @@ def main():
                                             help=f'Remotion 版本（default: {DEFAULT_REMOTION_VERSION}）')
     ap.add_argument('--dry-run',          action='store_true',
                                             help='仅解析并打印所有贴图的生成计划，不实际生成文件')
-    ap.add_argument('--parallel',         action='store_true',
-                                            help='PIL 模式并行生成（多线程，default: False）')
     _args = ap.parse_args()
 
-    # P1-2: Remotion 版本提示
+    # Remotion 版本提示
     detected_version = get_remotion_version()
     if detected_version:
         log(f"[Remotion] 检测到全局版本: {detected_version}", "INFO")
@@ -1040,7 +914,7 @@ def main():
         name, copy, v_elems, s_kw, theme = parse_prompt_file(pf)
         all_stickers.append((name, copy, v_elems, s_kw, theme))
 
-    # P2-5: Dry-run 模式 - 仅打印计划不生成
+    # Dry-run 模式 - 仅打印计划不生成
     if _args.dry_run:
         log(f"===== DRY-RUN 计划（{len(all_stickers)} 张贴图）=====", "INFO")
         for i, (pf, (name, copy, v_elems, s_kw, theme)) in enumerate(zip(files, all_stickers)):
@@ -1078,54 +952,9 @@ def main():
         else:
             log(f"Remotion 环境检查失败: {reason}", "WARN")
 
-    # P3-3: 后台 PIL 预计算（如果 Remotion 即将使用）
-    pil_prefetch_thread = None
-    if remotion_project_ready and _args.mode == 'auto':
-        # 提前启动 PIL 预计算（后台线程池）
-        # 使用 ThreadPoolExecutor 而非 daemon thread，确保真正并发执行
-        from concurrent.futures import ThreadPoolExecutor as _TPE
-        _executor = _TPE(max_workers=min(4, len(all_stickers)))
-        _submitted = []
-        for i, (pf, (name, copy, v_elems, _, theme)) in enumerate(zip(files, all_stickers)):
-            out_path = os.path.join(_args.output, os.path.basename(pf).replace('.md', '.png'))
-            _submitted.append(_executor.submit(
-                _background_pil_worker,
-                i, name, copy, v_elems, theme, out_path
-            ))
-        # P2-8: 显式关闭并等待所有任务完成（不是 daemon thread 的职责）
-        def _pil_prefetch():
-            _executor.shutdown(wait=True)
-        pil_prefetch_thread = threading.Thread(target=_pil_prefetch, daemon=False)
-        pil_prefetch_thread.start()
-        log("[PIL 预计算] 已后台启动", "INFO")
-
-    parallel_done = {}  # {idx: True/False}，--parallel 时由并行块填充
-    ok_count     = 0
-    fail_count   = 0
-    failures     = []   # 收集失败信息
-
-    # P2-13: 并行 PIL 模式（--parallel 时对纯 PIL 贴图批量并发生成）
-    if _args.parallel and _args.mode == 'pil':
-        from concurrent.futures import ThreadPoolExecutor as _TPE
-        _workers = min(8, len(all_stickers))
-        log(f"[并行] 启动 {_workers} 线程并行生成 {len(all_stickers)} 张贴图", "INFO")
-        with _TPE(max_workers=_workers) as _ex:
-            _futures = {}
-            for idx, (pf, (name, copy, v_elems, _, theme)) in enumerate(zip(files, all_stickers)):
-                out = os.path.join(_args.output, os.path.basename(pf).replace('.md', '.png'))
-                _futures[_ex.submit(pil_fallback, name, copy, v_elems, theme, out)] = (idx, name, out)
-            for _fut in _futures:
-                idx, name, out = _futures[_fut]
-                try:
-                    _fut.result()
-                    parallel_done[idx] = True
-                    ok_count += 1
-                    print(f"✓ {name} (.png)")
-                except Exception as _e:
-                    parallel_done[idx] = False
-                    failures.append((name, str(_e)))
-                    fail_count += 1
-                    log(f"[并行] {name} 失败: {_e}", "ERROR")
+    ok_count   = 0
+    fail_count = 0
+    failures    = []   # 收集失败信息
 
     for idx, (pf, sticker_data) in enumerate(zip(files, all_stickers)):
         name, copy, v_elems, s_kw, theme = sticker_data
@@ -1143,7 +972,7 @@ def main():
                 success = True
                 generated_ext = '.png'
             except Exception as e:
-                log(f"[AI] {name} 失败，降级: {e}", "WARN")
+                log(f"[AI] {name} 失败: {e}", "WARN")
                 if mode == 'ai':
                     fail_count += 1
                     failures.append((name, str(e)))
@@ -1151,54 +980,21 @@ def main():
                         break
                     continue
 
-        # 阶段二：Remotion（Remotion 知识内置于本脚本，执行复用单一项目）
+        # 阶段二：Remotion
         if not success and mode in ('auto', 'remotion') and remotion_project_ready:
             log("[Remotion] 正在生成 GIF（单一项目 Sequence 架构）", "INFO")
             try:
-                # P3-3: 检查是否已有 PIL 预计算结果可用（Remotion 失败时快速降级）
-                use_pil_prefetch = idx in _pil_precomputed and idx not in _pil_precompute_errors
-
                 generate_remotion_gif(
                     name, copy, v_elems, theme, out,
                     idx, len(all_stickers), project_dir)
                 success = True
                 generated_ext = '.gif'
                 remotion_used = True
-
-                # 如果 PIL 已预计算完成但 Remotion 也成功了，标记 PIL 结果为冗余
-                if idx in _pil_precomputed:
-                    del _pil_precomputed[idx]
-
             except Exception as e:
                 err_str = str(e)
-                log(f"[Remotion] {name} 失败，降级: {err_str[:120]}", "WARN")
-
-                # P3-3: PIL 预计算结果降级
-                if idx in _pil_precomputed:
-                    import shutil
-                    shutil.copy2(_pil_precomputed[idx], out)
-                    success = True
-                    generated_ext = '.png'
-                    del _pil_precomputed[idx]
-                    log(f"[Remotion→PIL] {name} 使用预计算结果降级", "OK")
-                else:
-                    if mode == 'remotion':
-                        fail_count += 1
-                        failures.append((name, err_str))
-                        if not _args.continue_on_error:
-                            break
-                        continue
-
-        # 阶段三：PIL（--parallel 时跳过已并发生成的）
-        if not success and idx not in parallel_done:
-            try:
-                pil_fallback(name, copy, v_elems, theme, out)
-                success = True
-                generated_ext = '.png'
-            except Exception as e:
-                log(f"[PIL] {name} 失败: {e}", "ERROR")
+                log(f"[Remotion] {name} 失败: {err_str[:120]}", "WARN")
                 fail_count += 1
-                failures.append((name, str(e)))
+                failures.append((name, err_str))
                 if not _args.continue_on_error:
                     break
                 continue
@@ -1209,10 +1005,6 @@ def main():
         else:
             fail_count += 1
             failures.append((name, "未知错误"))
-
-    # 等待后台 PIL 预计算线程结束（如果还在运行）
-    if pil_prefetch_thread and pil_prefetch_thread.is_alive():
-        pil_prefetch_thread.join(timeout=5)
 
     print(f"\n✅ {ok_count}/{len(files)} 张贴图生成完成")
     print(f"📦 {_args.output}")

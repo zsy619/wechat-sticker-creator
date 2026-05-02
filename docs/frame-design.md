@@ -6,10 +6,7 @@
 
 每张贴图对应一个独立的 Remotion 项目。Remotion 在这里不是用来做视频，而是作为**代码驱动的精确绘图工具**——用 React + TypeScript 精确控制每个像素和动画帧。
 
-**为什么不用 PIL？**
-- PIL 是几何堆叠，视觉上限低
-- Remotion 可以调用任意字体、使用精确的颜色空间、渲染 SVG 路径、实现动画曲线
-- 可以精确控制每个元素的 `transform`、`opacity`、`filter`、`text-shadow`
+Remotion 可以调用任意字体、使用精确的颜色空间、渲染 SVG 路径、实现动画曲线，可以精确控制每个元素的 `transform`、`opacity`、`filter`、`text-shadow`。
 
 ## 实际项目结构
 
@@ -100,12 +97,12 @@ emojis_html += "  <span style=" + span_base + ">" + em + "</span>\n"
 
 ### render 命令（GIF 输出）
 
-| 输出格式 | 命令 |
-|---------|------|
-| ~~still~~ | ~~`remotion still`~~ |
-| **GIF** | `npx remotion render src/index.tsx StickerComponent --output out.gif --frames 0-89 --fps 30` |
+|| 输出格式 | 命令 | 说明 |
+|---------|---------|------|------|
+| **GIF** | `npx remotion render src/index.tsx StickerComponent --output out.gif --frames 0-89 --fps 30` | 生成 90 帧动画（3秒@30fps） |
+| **单帧 PNG** | `npx remotion still src/index.tsx StickerComponent --output out.png` | 导出第 0 帧（调试用） |
 
-> **注意**：`remotion still` 只导出单帧 PNG，且不支持 GIF 输出。所有贴图默认使用 `remotion render` 生成90帧动画。
+> **已知问题**：`remotion still` 在 Discovery 阶段调用 `StickerComponent(undefined)` 时，`<Composition>` 的 `width`/`height` 必须有 `??` fallback 值，否则报错 `width prop must be a number, but passed undefined`。详见 [qa.md](qa.md#remotion-cli-调试技巧)。
 
 ## 主题配色注入
 
@@ -276,6 +273,33 @@ Remotion 组件样式必须用**内联 style**，不使用 CSS class（因为是
 ```
 
 `styles.css` 只用于最基础的全局样式（如 `body { margin: 0 }`）。
+
+## 竖屏布局规格（1080×1440）
+
+微信贴图帧尺寸为 **1080×1440（3:4 竖屏）**，比标准 9:16 更窄，字体和布局必须相应缩小：
+
+| 元素 | 竖屏推荐 | 说明 |
+|------|---------|------|
+| 主标题 | ≤96px | 文字过大会被裁剪 |
+| 正文 | ≤28px | 保持可读性 |
+| 辅助文字 | ≤22px | 说明注释 |
+| Emoji 尺寸 | 200-300px | 贴图核心元素 |
+| 左右 padding | ≥50px | 防止贴边 |
+
+**布局规则**：
+
+```tsx
+// ✅ 竖屏正确：左右留白 + maxWidth 约束
+const W = 1080, PAD = 50;
+<div style={{
+  padding: `0 ${PAD}px`,
+  maxWidth: W - PAD * 2,  // 980px
+}}>
+
+// ❌ 错误：全宽内容在窄屏上溢出
+<div style={{ width: 1080 }}>      // 超出安全范围
+<div style={{ width: '100%' }}>    // 1080 的 100% 太宽
+```
 
 ## 输出规格
 
