@@ -282,10 +282,11 @@ def _get_cached_remotion_base(theme_key):
             .replace("__FPS__", str(FPS))
             .replace("__W__", str(W))
             .replace("__H__", str(H))
-            .replace("__BG_COLOR__", "#0D0D1A")
-            .replace("__TEXT_COLOR__", "#FFFFFF")
-            .replace("__PRIMARY__", "#00FFFF")
-            .replace("__SECONDARY__", "#FF00FF")
+            .replace("__BG_COLOR__", THEMES.get(theme_key, THEMES["cyberpunk"])["bg"])
+            .replace("__TEXT_COLOR__", THEMES.get(theme_key, THEMES["cyberpunk"])["text"])
+            .replace("__PRIMARY__", THEMES.get(theme_key, THEMES["cyberpunk"])["primary"])
+            .replace("__SECONDARY__", THEMES.get(theme_key, THEMES["cyberpunk"])["secondary"])
+            .replace("__THEME_KEY__", theme_key)
             .replace("__TOTAL_FRAMES__", str(FRAMES_PER_STICKER))
             .replace("__SEQUENCES__", ""))
         with open(dst, "w") as f:
@@ -299,9 +300,16 @@ def _get_cached_remotion_base(theme_key):
     with open(os.path.join(cache_dir, "package.json"), "w") as f:
         json.dump(pkg, f, indent=2)
 
-    # 写基础 styles.css
+    # 写基础 styles.css（从 remotion/styles/base.css 复制）
+    # tmpl_base = remotion/template/，os.pardir = remotion/，styles/base.css 存在
+    tmpl_css_src = os.path.join(tmpl_base, os.pardir, "styles", "base.css")
+    if os.path.exists(tmpl_css_src):
+        with open(tmpl_css_src) as f:
+            css_src = f.read()
+    else:
+        css_src = ""  # 空 CSS（styles 由内联 style 提供）
     with open(os.path.join(cache_dir, "src", "styles.css"), "w") as f:
-        f.write("body { margin: 0; background: #0D0D1A; }\n")
+        f.write(css_src)
 
     # npm install
     log(f"[Remotion 缓存] 首次构建，执行 npm install（版本 {version}）...", "INFO")
@@ -434,7 +442,7 @@ def _get_or_create_remotion_project(project_dir, stickers, theme_key):
         emoji_json = json.dumps(emojis, ensure_ascii=False)
         sequences_jsx += (
             f"      <Sequence from={{{i} * {FRAMES_PER_STICKER}}} durationInFrames={{{FRAMES_PER_STICKER}}}>\n"
-            f"        <StickerScene copy={{'{copy_escaped}'}} emojis_str={{{repr(emoji_json)}}} frameOffset={{{i} * {FRAMES_PER_STICKER}}} />\n"
+            f"        <StickerScene copy={{'{copy_escaped}'}} emojis_str={{{repr(emoji_json)}}} frameOffset={{{i} * {FRAMES_PER_STICKER}}} stickerIndex={{{i}}} />\n"
             f"      </Sequence>\n"
         )
 
@@ -460,6 +468,7 @@ def _get_or_create_remotion_project(project_dir, stickers, theme_key):
         .replace("__TEXT_COLOR__", text_color)
         .replace("__PRIMARY__", theme['primary'])
         .replace("__SECONDARY__", theme['secondary'])
+        .replace("__THEME_KEY__", theme_key)
         .replace("__TOTAL_FRAMES__", str(total_frames))
         .replace("__SEQUENCES__", sequences_jsx)
     )
@@ -469,8 +478,18 @@ def _get_or_create_remotion_project(project_dir, stickers, theme_key):
         .replace("__H__", str(H))
         .replace("__TOTAL_FRAMES__", str(total_frames))
     )
+    # B3修复：将占位符替换为实际常量值（StickerComponent 显式接收 Props）
+    outer_code = (outer_code
+        .replace("totalFrames={__TOTAL_FRAMES__}", f"totalFrames={{{total_frames}}}")
+        .replace("fps={__FPS__}", f"fps={{{FPS}}}")
+        .replace("width={__W__}", f"width={{{W}}}")
+        .replace("height={__H__}", f"height={{{H}}}")
+    )
 
-    css_content = f"body {{ margin: 0; background: {bg_color}; }}\n"
+    # B1+B2修复：CSS 单一来源，仅全局重置（无 :root 变量，TS 使用内联常量）
+    # B2：删除 :root { --primary, --secondary } 变量块（TS 不读取 CSS 变量）
+    css_content = f"""body {{ margin: 0; padding: 0; overflow: hidden; background: {bg_color}; }}
+* {{ box-sizing: border-box; }}"""
 
     # P2-4: debug 模式下保留原始 TSX 内容
     if _args and _args.debug_remotion:

@@ -1,7 +1,7 @@
 ---
 name: wechat-sticker-skill
 description: Create WeChat emoji sticker series from any input (URL, topic, or content). Use when user asks to "做微信贴图", "微信贴图", "创建微信贴图包", "WeChat stickers", "微信emoji", "根据内容生成贴图", "做一套贴图", "生成贴图". Triggers on sticker creation, emoji design, reaction images, or any WeChat sticker-related request.
-version: 4.4.1
+version: 4.7.0
 tags: ["wechat", "sticker", "emoji", "表情包", "贴图", "微信贴图", "remotion", "frame-generation"]
 metadata:
   author: zhushuyan
@@ -11,7 +11,7 @@ metadata:
 
 > **更新日志**：所有变更记录在 [CHANGELOG.md](./CHANGELOG.md)。
 
-# 微信贴图生成器 v4.4.1 (WeChat Sticker Creator)
+# 微信贴图生成器 v4.7.0 (WeChat Sticker Creator)
 
 本技能根据用户输入（链接、主题或内容），自动进行内容聚合、贴图设计和生成，输出一套完整的微信表情包。
 
@@ -47,15 +47,13 @@ wechat-stickers/                    ← 技能根目录
 ├── SKILL.md                              ← 入口文件
 ├── CHANGELOG.md                          ← 更新日志
 │
-├── remotion/                              ← Remotion 模板源文件（阶段二读取）
-│   ├── template/
-│   │   ├── index.tsx                     ← registerRoot 入口模板
-│   │   ├── StickerComponent.tsx          ← 外层组件模板（返回 <Composition>）
-│   │   └── StickerContent.tsx            ← 内层组件模板（含 useCurrentFrame）
-│   ├── components/
-│   │   └── EmojiElement.tsx              ← 可复用 emoji 组件
-│   └── styles/
-│       └── base.css                      ← 基础样式
+│   ├── remotion/
+│   │   ├── template/
+│   │   │   ├── index.tsx                     ← registerRoot 入口模板
+│   │   │   ├── StickerComponent.tsx         ← 外层组件模板（返回 <Composition>）
+│   │   │   └── StickerContent.tsx           ← 核心动画逻辑（自包含所有主题配置）
+│   │   └── styles/
+│   │       └── base.css                     ← 全局 CSS 重置（仅 body/margin 重置）
 │
 ├── scripts/
 │   ├── _vocab.py                         ← 共享词汇表模块（VOCABULARY + THEMES）[共享数据源]

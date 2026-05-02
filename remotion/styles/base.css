@@ -1,4 +1,10 @@
-/* styles.css - 基础样式（Remotion 项目用） */
+/* base.css - Remotion 样式（仅全局重置，无视觉干扰）
+ *
+ * 重要：所有视觉样式均通过 StickerContent.tsx 内联 style 设置，
+ * 此文件仅提供全局重置。禁止在此文件设置 background/颜色等视觉属性。
+ */
+
+/* ── 全局重置（必须） ─────────────────────────────── */
 
 * {
   box-sizing: border-box;
@@ -7,5 +13,7 @@
 body {
   margin: 0;
   padding: 0;
+  overflow: hidden;
+  /* 透明背景，让 Remotion 容器背景透出 */
   background: transparent;
 }
