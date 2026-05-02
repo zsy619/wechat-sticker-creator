@@ -2,6 +2,17 @@
 
 All notable changes to the wechat-sticker-skill are documented here.
 
+## [4.8.3] - 2026-05-02
+
+### 规范修订：Tags 章节缺失 + session-log-template 不应拷贝到项目
+
+**问题**：`workflow.md` 缺少 Tags 标签记录规范章节；`session-log-template.md` 被标记为"自动填充"但未说明它留在技能内不拷贝到项目。
+
+**修复**：
+
+- **F-1**: `workflow.md` 新增 `## Tags 标签记录规范` 章节（含功能、参数、标签类别、示例）
+- **F-2**: `SKILL.md` docs 列表说明改为"按需复制到项目 docs/"，`session-log-template.md` 注释明确"由 generate_session_log.py 使用，不拷贝到项目"
+
 ## [4.8.2] - 2026-05-02
 
 ### 修复"规范要求的文档从未生成到项目"问题

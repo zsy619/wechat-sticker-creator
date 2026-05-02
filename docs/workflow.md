@@ -118,3 +118,42 @@
 | prompts × 6 | 6,840 | 2,160 | 9,000 |
 | **总计** | **8,460** | **2,830** | **11,290** |
 ```
+
+## Tags 标签记录规范 {#tags-标签记录规范}
+
+每次生成贴图包**自动生成** `docs/tags.md`，由 `scripts/generate_tags.py` 在工作流步骤 5.5 执行（`--with-tags`，默认开启）。
+
+### 功能
+
+- 从 manifest 或 prompts 目录提取关键词和贴图数量
+- 按主题匹配 + 关键词命中 + 类别加成三轮打分
+- 输出 20 个推荐标签（按热度排序）
+
+### 参数
+
+| 参数 | 说明 |
+|------|------|
+| `--input` | `sticker-manifest.md` 路径或 `prompts/` 目录 |
+| `--output` | `tags.md` 输出路径 |
+| `--theme` | 主题（manifest 未指定时使用） |
+
+### 标签类别
+
+| 类别 | 示例 |
+|------|------|
+| positive | 开心、加油、点赞、可爱、治愈 |
+| negative | 难过、崩溃、无语、焦虑、疲惫 |
+| reactions | 哈哈、笑死、666、绝了、打工人 |
+| social | 职场、开会、学习、摸鱼、躺平 |
+| tech | 程序员、代码、AI、效率、工具 |
+| lifestyle | 美食、咖啡、熬夜、健身、旅行 |
+| trending | 干饭人、尾款人、内卷、绝绝子 |
+
+### 示例
+
+```bash
+python3 scripts/generate_tags.py \
+    --input sticker-manifest.md \
+    --output docs/tags.md \
+    --theme neon
+```

@@ -11,7 +11,6 @@ metadata:
 > **更新日志**：所有变更记录在 [CHANGELOG.md](./CHANGELOG.md)。
 
 # 微信贴图生成器 v4.8.3 (WeChat Sticker Creator)
-# 微信贴图生成器 v4.8.3 (WeChat Sticker Creator)
 
 本技能根据用户输入（链接、主题或内容），自动进行内容聚合、贴图设计和生成，输出一套完整的微信表情包。
 
@@ -69,8 +68,9 @@ wechat-stickers/                    ← 技能根目录
 │   ├── generate_session_log.py            ← Session Log 生成（project/docs/session-log.md）
 │   └── copy_docs.py                      ← 技能文档复制到项目 docs/
 │
-└── docs/                                ← 规范文档
+└── docs/                                ← 规范文档（按需复制到项目 docs/）
     ├── workflow.md                       ← 核心工作流
+    ├── prompts-format.md                ← Prompt 生成规范
     ├── content-format.md                ← 内容格式（content-analysis / manifest / prompts）
     ├── frame-design.md                  ← Remotion 帧设计规范
     ├── remotion-projects.md             ← Remotion 项目完整结构
@@ -78,7 +78,7 @@ wechat-stickers/                    ← 技能根目录
     ├── image-generation.md              ← 三段式图像生成流程
     ├── output.md                        ← 最终输出与打包
     ├── qa.md                            ← 质量检查
-    └── session-log-template.md          ← Session Log 模板（自动填充）
+    └── session-log-template.md          ← Session Log 模板（由 generate_session_log.py 使用，不拷贝到项目）
 
 ```
 

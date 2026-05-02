@@ -508,7 +508,7 @@ AI算出答案是八没错
 
 每个项目的 `docs/session-log.md` 记录 Token 消耗，prompt 本身不需要写 token 信息。
 
-**模板示例**（见 [session-log.md 模板](#session-log-记录规范)）：
+**模板示例**（见 [session-log.md 模板](../workflow.md#session-log-记录规范)）：
 
 | 阶段 | 输入 | 输出 | 合计 |
 |------|------|------|------|
