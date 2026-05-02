@@ -1,6 +1,7 @@
 # Remotion 项目结构
 
 本文档描述**阶段二（Remotion 帧导出）**生成的项目结构。
+利用 remotion-best-practices skill 来实践最佳实践，构建 Remotion 项目。
 
 ## 项目位置
 
