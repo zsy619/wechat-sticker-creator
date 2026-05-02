@@ -17,7 +17,7 @@
     ↓
 生成贴图提示词 (prompts/*.md)
     ↓
-图片生成（AI → Remotion(remotion-best-practices skill) → PIL）
+图片生成（AI → Remotion → PIL）
     ↓
 输出汇总 & 标签推荐
 ```
@@ -83,9 +83,9 @@
 
 ---
 
-## Session Log 记录规范
+## Session Log 记录规范 {#session-log-记录规范}
 
-每次生成贴图包必须填写 `docs/session-log.md`，记录 Token 消耗和处理详情。
+每次生成贴图包**自动生成** `docs/session-log.md`，由 `scripts/generate_session_log.py` 在工作流末尾执行（`--with-session-log`，默认开启）。
 
 ### 必须记录的字段
 
@@ -104,30 +104,17 @@
 费用 = (输入tokens + 输出tokens) / 1,000,000 × 单价（元/1M tokens）
 ```
 
-### Token 消费监控
+### 手动补充 Token
 
-生成完成后，通过 `session_status` 命令查看当次 Token 消耗（OpenClaw 内置命令）。
+生成完成后，通过 `session_status` 命令查看当次 Token 消耗，手动填入 `session-log.md` 的 Token 消耗记录表，便于项目复盘和成本优化。
 
-如果需要手动记录，在 AI 对话结束后询问模型本次 Token 消耗。
+### 示例
 
-### 为什么不自动记录？
-
-- 每次会话结束时主动记录是最佳实践
-- 记录到 `docs/session-log.md` 便于项目复盘和成本优化
-
-### 记录时机
-
-- 每次生成完成立即记录
-- 出现问题时记录问题和消耗
-- 定期汇总同一项目的累计消耗
-
-### 示例表格
-
+```
 | 阶段 | 输入 | 输出 | 合计 |
 |------|------|------|------|
 | 内容聚合分析 | 1,200 | 380 | 1,580 |
 | sticker-manifest | 420 | 290 | 710 |
 | prompts × 6 | 6,840 | 2,160 | 9,000 |
-| Remotion 构建 × 6 | 8,400 | 3,200 | 11,600 |
-| **总计** | **16,860** | **6,030** | **22,890** |
-
+| **总计** | **8,460** | **2,830** | **11,290** |
+```

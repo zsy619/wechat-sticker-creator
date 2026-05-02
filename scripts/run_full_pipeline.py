@@ -3,7 +3,7 @@
 run_full_pipeline.py - 微信贴图完整工作流串联
 
 一次性执行完整流程：
-  内容聚合分析 → manifest → prompts → 图片生成
+  步骤0：文档复制 → 步骤1-6
 
 Usage:
     python3 scripts/run_full_pipeline.py \
@@ -26,6 +26,23 @@ SKILL_DIR = os.path.dirname(SCRIPT_DIR)
 
 def script_path(name):
     return os.path.join(SCRIPT_DIR, name)
+
+def _copy_docs_step(project_root, theme, verbose=True):
+    """步骤0：复制技能文档到项目目录"""
+    from copy_docs import copy_skill_docs
+    return copy_skill_docs(project_root, theme=theme, verbose=verbose)
+
+def _session_log_step(project_root, theme, sticker_count, verbose=True):
+    """步骤7：生成 session-log.md"""
+    from generate_session_log import generate_session_log
+    output = os.path.join(project_root, 'docs', 'session-log.md')
+    return generate_session_log(
+        project_name=os.path.basename(project_root),
+        theme=theme,
+        sticker_count=sticker_count,
+        output=output,
+        verbose=verbose,
+    )
 
 # ── 步骤执行 ─────────────────────────────────────────────
 
@@ -77,18 +94,28 @@ def run_workflow(args):
 
     print(f"""
 ╔═══════════════════════════════════════════╗
-║   微信贴图完整工作流 (v4.4.0)            ║
+║   微信贴图完整工作流 (v4.8.2)            ║
 ╚═══════════════════════════════════════════╝
 
 输入: {args.input[:80]}{'...' if len(args.input) > 80 else ''}
 输出: {project_root}
 主题: {args.theme}
 模式: {args.mode}
+文档: {'✓ 包含' if args.with_docs else '✗ 跳过'}
+标签: {'✓ 包含' if args.with_tags else '✗ 跳过'}
+SessionLog: {'✓ 包含' if args.with_session_log else '✗ 跳过'}
 """)
 
     os.makedirs(project_root, exist_ok=True)
 
     steps = []
+
+    # 步骤0：复制技能文档（默认开启）
+    if args.with_docs:
+        steps.append({
+            'name': '0-复制文档',
+            'func': lambda: _copy_docs_step(project_root, args.theme),
+        })
 
     # 步骤1：内容聚合分析
     if args.mode in ('auto', 'full', 'analysis'):
@@ -163,6 +190,19 @@ def run_workflow(args):
             ],
         })
 
+    # 步骤5.5：标签生成（默认开启）
+    if args.with_tags:
+        tags_output = os.path.join(project_root, 'docs', 'tags.md')
+        steps.append({
+            'name': '5.5-标签生成',
+            'cmd': [
+                sys.executable, script_path('generate_tags.py'),
+                '--input', manifest if os.path.exists(manifest) else prompts_dir + '/',
+                '--output', tags_output,
+                '--theme', args.theme,
+            ],
+        })
+
     # 步骤6：打包
     if args.mode in ('auto', 'full', 'pack') and args.pack:
         zip_path = os.path.join(project_root, f'stickers-{args.theme}.zip')
@@ -177,6 +217,14 @@ def run_workflow(args):
             ],
         })
 
+    # 步骤7：session-log（默认开启，在打包之后）
+    if args.with_session_log:
+        sticker_count = len([f for f in os.listdir(prompts_dir) if f.endswith('.md')]) if os.path.exists(prompts_dir) else 0
+        steps.append({
+            'name': '7-SessionLog',
+            'func': lambda: _session_log_step(project_root, args.theme, sticker_count),
+        })
+
     # 执行所有步骤
     if not steps:
         print("[错误] 没有要执行的步骤（请检查 --mode 参数）")
@@ -185,6 +233,31 @@ def run_workflow(args):
 
     print(f"[工作流] 共 {len(steps)} 个步骤")
     for i, step in enumerate(steps):
+        # 函数类型步骤（步骤0、7）直接调用，不走子进程
+        if 'func' in step:
+            print(f"\n{'='*60}")
+            print(f"[步骤 {step['name']}]")
+            print('='*60)
+            try:
+                result = step['func']()
+                if result is False:
+                    if ask_continue(step['name']):
+                        print(f"\n⚠️  跳过步骤 {step['name']}，继续后续步骤...")
+                        continue
+                    else:
+                        print(f"\n⛔ 工作流在步骤 {step['name']} 中止")
+                        sys.exit(1)
+                print(f"\n✅ 步骤 {step['name']} 完成")
+            except Exception as e:
+                print(f"\n❌ 步骤 {step['name']} 异常: {e}")
+                if ask_continue(step['name']):
+                    print(f"\n⚠️  跳过步骤 {step['name']}，继续后续步骤...")
+                    continue
+                else:
+                    print(f"\n⛔ 工作流在步骤 {step['name']} 中止")
+                    sys.exit(1)
+            continue
+
         ok = run_step(step['name'], step['cmd'])
         if not ok:
             if ask_continue(step['name']):
@@ -195,6 +268,9 @@ def run_workflow(args):
                 sys.exit(1)
 
     # 最终汇总
+    prompts_count = len([f for f in os.listdir(prompts_dir) if f.endswith('.md')]) if os.path.exists(prompts_dir) else '?'
+    assets_count = len([f for f in os.listdir(assets_dir) if f.endswith(('.png','.gif'))]) if os.path.exists(assets_dir) else '?'
+
     print(f"""
 ╔═══════════════════════════════════════════╗
 ║   工作流完成                             ║
@@ -202,8 +278,8 @@ def run_workflow(args):
 
 📁 项目目录: {project_root}
 📋 Manifest: {manifest}
-📝 Prompts: {prompts_dir}/ ({len([f for f in os.listdir(prompts_dir) if f.endswith('.md')]) if os.path.exists(prompts_dir) else '?'} 张)
-🖼️  贴图: {assets_dir}/ ({len([f for f in os.listdir(assets_dir) if f.endswith(('.png','.gif'))]) if os.path.exists(assets_dir) else '?'} 张)
+📝 Prompts: {prompts_dir}/ ({prompts_count} 张)
+🖼️  贴图: {assets_dir}/ ({assets_count} 张)
 """)
 
     if args.pack and os.path.exists(zip_path):
@@ -213,7 +289,7 @@ def run_workflow(args):
 
 def main():
     ap = argparse.ArgumentParser(
-        description='微信贴图完整工作流（内容聚合 → manifest → prompts → 图片生成）',
+        description='微信贴图完整工作流（文档复制 → 内容聚合 → manifest → prompts → 图片生成）',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 模式说明:
@@ -230,6 +306,7 @@ def main():
   python3 run_full_pipeline.py --input "https://github.com/xxx" --output ~/wechat/xxx --mode prompts
   python3 run_full_pipeline.py --input "AI编程助手" --output ~/wechat/ai --continue-on-error --debug-remotion
   python3 run_full_pipeline.py --input "AI编程助手" --output ~/wechat/ai --parallel --dry-run
+  python3 run_full_pipeline.py --input "AI编程助手" --output ~/wechat/ai --no-docs --no-tags
         """
     )
     ap.add_argument('--input', required=True,
@@ -261,6 +338,24 @@ def main():
                     help='PIL 模式并行生成（透传给 generate_frames.py）')
     ap.add_argument('--dry-run', action='store_true',
                     help='仅打印计划不实际生成（透传给 generate_frames.py）')
+    # 新增：文档相关
+    ap.add_argument('--with-docs', action='store_true', default=True,
+                    dest='with_docs',
+                    help='生成项目时包含技能内置文档（默认开启）')
+    ap.add_argument('--no-docs', action='store_false', dest='with_docs',
+                    help='跳过文档复制（不生成 docs/ 目录）')
+    # 新增：标签
+    ap.add_argument('--with-tags', action='store_true', default=True,
+                    dest='with_tags',
+                    help='生成标签文档 tags.md（默认开启）')
+    ap.add_argument('--no-tags', action='store_false', dest='with_tags',
+                    help='跳过标签生成')
+    # 新增：session-log
+    ap.add_argument('--with-session-log', action='store_true', default=True,
+                    dest='with_session_log',
+                    help='生成 session-log.md（默认开启）')
+    ap.add_argument('--no-session-log', action='store_false', dest='with_session_log',
+                    help='跳过 session-log 生成')
     args = ap.parse_args()
 
     run_workflow(args)

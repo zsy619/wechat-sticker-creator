@@ -2,7 +2,28 @@
 
 All notable changes to the wechat-sticker-skill are documented here.
 
-## [4.7.0] - 2026-05-02
+## [4.8.2] - 2026-05-02
+
+### 修复"规范要求的文档从未生成到项目"问题
+
+**问题**：技能规范在 `workflow.md` L88 明确要求"每次生成贴图包必须填写 `docs/session-log.md`"，在 `prompts-format.md` L509 提及 session-log 关联记录，`generate_tags.py` 存在但从未接入工作流。这些内容最终流入了 session log 而非项目文件。
+
+**修复**：
+
+- **S-1**: 新增 `docs/session-log-template.md` 模板
+- **S-2**: 新增 `scripts/generate_session_log.py`，从模板生成 `docs/session-log.md`
+- **S-3**: 将 `generate_tags.py` 接入 `run_full_pipeline.py` 步骤 5.5（默认开启）
+- **S-4**: 新增 `--with-docs/--no-docs`（步骤0，默认开启）、`--with-tags/--no-tags`（步骤5.5）、`--with-session-log/--no-session-log`（步骤7，默认开启）
+- 工作流版本升至 v4.8.2
+
+## [4.8.1] - 2026-05-02
+
+### 文档自动复制到项目（v1）
+
+- **T-1**: 新增 `scripts/copy_docs.py`
+- **T-2**: `run_full_pipeline.py` 新增步骤0（`--with-docs/--no-docs`，默认开启）
+
+## [4.8.0] - 2026-05-02
 
 ### StickerContent.tsx 清理（E 类）
 

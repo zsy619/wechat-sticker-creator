@@ -1151,18 +1151,9 @@ def main():
                         break
                     continue
 
-        # 阶段二：Remotion（加载最佳实践 skill，执行复用单一项目）
+        # 阶段二：Remotion（Remotion 知识内置于本脚本，执行复用单一项目）
         if not success and mode in ('auto', 'remotion') and remotion_project_ready:
-            # 加载 Remotion 最佳实践 skill（获取 CLI 限制、Chrome 配置、序列模式等知识）
-            try:
-                from importlib import import_module
-                _skill_mod = import_module("hermes_tools")
-                _skill_view = getattr(_skill_mod, "skill_view", None)
-                if _skill_view:
-                    _skill_view("remotion-best-practices")
-                    log("[Remotion] 已加载 remotion-best-practices 技能知识", "INFO")
-            except Exception as _e:
-                log(f"[Remotion] 加载 remotion-best-practices 失败: {_e}，继续执行", "WARN")
+            log("[Remotion] 正在生成 GIF（单一项目 Sequence 架构）", "INFO")
             try:
                 # P3-3: 检查是否已有 PIL 预计算结果可用（Remotion 失败时快速降级）
                 use_pil_prefetch = idx in _pil_precomputed and idx not in _pil_precompute_errors

@@ -1,17 +1,17 @@
 ---
 name: wechat-sticker-skill
 description: Create WeChat emoji sticker series from any input (URL, topic, or content). Use when user asks to "做微信贴图", "微信贴图", "创建微信贴图包", "WeChat stickers", "微信emoji", "根据内容生成贴图", "做一套贴图", "生成贴图". Triggers on sticker creation, emoji design, reaction images, or any WeChat sticker-related request.
-version: 4.7.0
-tags: ["wechat", "sticker", "emoji", "表情包", "贴图", "微信贴图", "remotion-best-practices", "frame-generation"]
+version: 4.8.3
+tags: ["wechat", "sticker", "emoji", "表情包", "贴图", "微信贴图", "frame-generation"]
 metadata:
   author: zhushuyan
   updated: "2026-05-02"
 ---
 
-
 > **更新日志**：所有变更记录在 [CHANGELOG.md](./CHANGELOG.md)。
 
-# 微信贴图生成器 v4.7.0 (WeChat Sticker Creator)
+# 微信贴图生成器 v4.8.3 (WeChat Sticker Creator)
+# 微信贴图生成器 v4.8.3 (WeChat Sticker Creator)
 
 本技能根据用户输入（链接、主题或内容），自动进行内容聚合、贴图设计和生成，输出一套完整的微信表情包。
 
@@ -27,7 +27,7 @@ metadata:
 │     调用大模型（GPT-Image / Seedream 等）直接生成高质量帧
 │     ↓ 异常                                              │
 │  ② Remotion 帧导出（第二选择）                          │
-│     建独立 remotion-best-practices skill 项目，每张贴图对应每帧 = <Composition> 组件
+│     建独立 Remotion 项目，每张贴图对应每帧 = <Composition> 组件
 │     导出 **GIF**（90帧动画），独特视觉设计 + 动画特效                              │
 │     ↓ 异常                                              │
 │  ③ PIL 本地生成（兜底）                                 │
@@ -65,7 +65,9 @@ wechat-stickers/                    ← 技能根目录
 │   ├── pil_fallback.py                   ← PIL 兜底生成器（独立脚本，亦可单独使用）
 │   ├── pack_stickers.py                  ← 节点⑤：打包 ZIP + 生成封面/缩略图
 │   ├── qa_check.py                       ← 节点⑥：QA 自动化检查（尺寸/格式/词汇表）
-│   └── generate_tags.py                  ← 标签生成（manifest/prompts → tags.md）
+│   ├── generate_tags.py                  ← 标签生成（manifest/prompts → tags.md）
+│   ├── generate_session_log.py            ← Session Log 生成（project/docs/session-log.md）
+│   └── copy_docs.py                      ← 技能文档复制到项目 docs/
 │
 └── docs/                                ← 规范文档
     ├── workflow.md                       ← 核心工作流
@@ -73,9 +75,10 @@ wechat-stickers/                    ← 技能根目录
     ├── frame-design.md                  ← Remotion 帧设计规范
     ├── remotion-projects.md             ← Remotion 项目完整结构
     ├── project-structure.md              ← 项目目录结构
-    ├── image-generation.md               ← 三段式图像生成流程
+    ├── image-generation.md              ← 三段式图像生成流程
     ├── output.md                        ← 最终输出与打包
-    └── qa.md                           ← 质量检查
+    ├── qa.md                            ← 质量检查
+    └── session-log-template.md          ← Session Log 模板（自动填充）
 
 ```
 
@@ -114,42 +117,6 @@ python3 scripts/generate_frames.py \
   --input wechat-stickers/ai-coding-assistant/prompts/ \
   --output wechat-stickers/ai-coding-assistant/assets-cyberpunk/ \
   --theme cyberpunk
-
-# 步骤5：打包 + QA 检查
-python3 scripts/pack_stickers.py \
-  --input wechat-stickers/ai-coding-assistant/assets-cyberpunk/ \
-  --output wechat-stickers/ai-coding-assistant/stickers.zip
-
-python3 scripts/qa_check.py \
-  --input wechat-stickers/ai-coding-assistant/assets-cyberpunk/ \
-  --vocabulary docs/prompts-format.md
-
-# ── 单独使用 PIL 兜底（完全离线）──────────────────────
-python3 scripts/pil_fallback.py \
-  --input prompts/ \
-  --output assets-pil/ \
-  --theme cyberpunk
-```
-
-### --mode 参数
-
-`generate_frames.py` 支持强制指定生成模式：
-
-| 值 | 行为 |
-|----|------|
-| `auto`（默认） | AI → Remotion → PIL 自动降级 |
-| `ai` | 仅 AI 生成，失败则整张贴图失败 |
-| `remotion` | 仅 Remotion 生成，失败则降级 PIL |
-| `pil` | 仅 PIL 生成（最稳定，完全离线） |
-
-### 新增参数（v4.4.0）
-
-| 参数 | 说明 |
-|------|------|
-| `--continue-on-error` | 某张贴图失败时跳过继续处理下一张 |
-| `--debug-remotion` | 保留 Remotion 调试文件（TSX 源码写入 `debug/` 目录） |
-| `--template-dir` | 自定义 Remotion 模板目录（覆盖内置模板 `remotion/template/`） |
-| `--remotion-version` | 指定 Remotion 版本（default: `4.0.448`） |
 
 # 步骤5：打包 + QA 检查
 python3 scripts/pack_stickers.py \
