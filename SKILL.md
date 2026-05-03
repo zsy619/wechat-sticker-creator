@@ -1,16 +1,17 @@
 ---
 name: wechat-sticker-skill
 description: Create WeChat emoji sticker series from any input (URL, topic, or content). Use when user asks to "做微信贴图", "微信贴图", "创建微信贴图包", "WeChat stickers", "微信emoji", "根据内容生成贴图", "做一套贴图", "生成贴图". Triggers on sticker creation, emoji design, reaction images, or any WeChat sticker-related request.
-version: 4.9.4
+version: 4.9.6
 tags: ["微信", "贴图", "表情包", "微信表情包", "微信贴图", "帧动画", "图片生成"]
 metadata:
   author: zhushuyan
   updated: "2026-05-03"
+
 ---
 
 > **更新日志**：所有变更记录在 [CHANGELOG.md](./CHANGELOG.md)。
 
-# 微信贴图生成器 v4.9.0 (WeChat Sticker Creator)
+# 微信贴图生成器 v4.9.6 (WeChat Sticker Creator)
 
 本技能根据用户输入（链接、主题或内容），自动进行内容聚合、贴图设计和生成，输出一套完整的微信表情包。
 
@@ -182,9 +183,26 @@ Remotion 失败则报错，不再降级。
 
 `cyberpunk` / `kawaii` / `neon` / `retro` / `hand-drawn` / `minimal` / `meme`
 
-## 详细文档
+## 项目文档
 
-> **项目文档说明**：`tags.md` / `session-log.md` / `post.md` 由脚本基于项目实际内容生成，直接输出到项目根目录。技能 `docs/` 目录下的文档为内部参考，不复制到项目。
+> **说明**：`tags.md` / `session-log.md` / `post.md` 由 pipeline **自动生成**（步骤 5.5、7、8），直接输出到项目根目录。技能 `docs/` 目录下的文档为内部参考，不复制到项目。
+
+| 文档 | 生成脚本 | 输出位置 | 说明 |
+|------|----------|----------|------|
+| `tags.md` | `generate_tags.py` | 项目根目录 | 从 prompts 提取关键词，微信贴图标签 |
+| `session-log.md` | `generate_session_log.py` | 项目根目录 | Token 估算、阶段耗时、项目记录 |
+| `post.md` | `generate_post.py` | 项目根目录 | 公众号推广文案（从 manifest 提取） |
+
+**自动生成时机**：完整 pipeline（`--mode auto`）中，步骤 5.5/7/8 自动执行。单独运行时需手动调用对应脚本。
+
+**补跑命令**：pipeline 中断后，可使用以下命令单独生成缺失文档：
+```bash
+python3 scripts/generate_tags.py --input sticker-manifest.md --output tags.md --theme cyberpunk
+python3 scripts/generate_session_log.py --project <name> --theme cyberpunk --sticker-count 8 --output session-log.md
+python3 scripts/generate_post.py --project ~/wechat-stickers/<project> --theme cyberpunk --output post.md
+```
+
+## 详细文档
 
 - **Remotion 帧设计** → [docs/frame-design.md](docs/frame-design.md)
 - **Remotion 项目结构** → [docs/remotion-projects.md](docs/remotion-projects.md)

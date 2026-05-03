@@ -2,6 +2,44 @@
 
 All notable changes to the wechat-sticker-skill are documented here.
 
+## [4.9.6] - 2026-05-03
+
+### 修复：文档生成相关问题
+
+**T1 - generate_session_log.py 死代码清理**
+- 删除 `TEMPLATE_PATH` 变量（指向已删除的 `docs/session-log-template.md`）
+- 删除模板模式全部死代码（replacements / template 读取 / placeholder 替换）
+- 直接调用 `_generate_inline()` 内联模式，始终走降级方案
+
+**T2 - generate_tags.py 误导提示删除**
+- 删除 footer 中的 `--agent-mode` 提示（功能已删除）
+
+**T3 - run_full_pipeline.py argparse description 修正**
+- "文档复制 →" → "内容聚合 →"
+
+**T5/T10 - SKILL.md 新增项目文档章节**
+- 新增 `## 项目文档` 章节，明确说明 tags.md / session-log.md / post.md 由 pipeline 自动生成
+- 添加文档路径对照表（生成脚本 → 输出位置 → 说明）
+- 添加补跑命令示例
+
+**T9 - run_full_pipeline.py 失败提示**
+- pipeline 非关键步骤失败时，打印三个文档生成补跑命令
+
+**T7 - 新增 --verify 模式**
+- `generate_tags.py --verify`：检查输入文件是否存在
+- `generate_session_log.py --verify`：检查输出目录是否存在
+- `generate_post.py --verify`：检查项目依赖文件（manifest/tags/prompts/content-analysis）
+
+**T8 - TEMPLATE_PATH 变量已删除**
+- 避免未来再次引用已删除文件
+
+**T11 - 版本号统一**
+- SKILL.md 标题：`v4.9.0` → `v4.9.6`
+- run_full_pipeline.py header：`v4.8.5` → `v4.9.6`
+
+**generate_post.py argparse description 修正**
+- 删除"（Agent LLM 双调用模式）"残留文字
+
 ## [4.9.4] - 2026-05-03
 
 ### 修复：真正的 Agent LLM 生成（双调用模式）

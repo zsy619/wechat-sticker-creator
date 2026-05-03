@@ -48,7 +48,7 @@ def extract_info(project_root, theme, link):
     """从项目目录提取信息用于生成 post"""
 
     manifest_path = os.path.join(project_root, "sticker-manifest.md")
-    tags_path = os.path.join(project_root, "docs", "tags.md")
+    tags_path = os.path.join(project_root, "tags.md")
     content_path = os.path.join(project_root, "content-analysis.md")
     prompts_dir = os.path.join(project_root, "prompts")
 
@@ -307,15 +307,39 @@ link: {link or ''}
 
 def main():
     parser = argparse.ArgumentParser(
-        description="生成微信公众号推广文档 post.md（Agent LLM 双调用模式）"
-    )
+        description="生成微信公众号推广文档 post.md")
     parser.add_argument("--project", required=True, help="项目目录")
     parser.add_argument("--theme", required=True, help="主题")
     parser.add_argument("--link", default="", help="项目链接")
-    parser.add_argument("--output", required=True, help="post.md 输出路径")
+    parser.add_argument("--output", default=None,
+                       help="post.md 输出路径（verify 模式可不指定）")
     parser.add_argument("--title", default=None, help="自定义标题（不超过20字符）")
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--verify", action="store_true",
+                       help="仅验证输入文件，不生成文档")
     args = parser.parse_args()
+
+    # --verify 模式：检查依赖文件是否存在
+    if args.verify:
+        project_root = os.path.abspath(args.project)
+        manifest = os.path.join(project_root, "sticker-manifest.md")
+        tags = os.path.join(project_root, "tags.md")
+        prompts = os.path.join(project_root, "prompts")
+        content = os.path.join(project_root, "content-analysis.md")
+        print("[verify] 检查项目依赖文件...")
+        all_ok = True
+        for path, label in [(manifest, "manifest"), (tags, "tags"), (prompts, "prompts/"), (content, "content-analysis")]:
+            exists = os.path.exists(path)
+            status = "✅" if exists else "❌"
+            print(f"  {status} {label}: {path}")
+            if not exists:
+                all_ok = False
+        print(f"\n{'✅ 所有依赖文件就绪' if all_ok else '❌ 缺少依赖文件'}")
+        return 0 if all_ok else 1
+
+    # verify 之后 output 必须有值
+    if not args.output:
+        parser.error("--output 在生成模式下为必填参数")
 
     return (
         0

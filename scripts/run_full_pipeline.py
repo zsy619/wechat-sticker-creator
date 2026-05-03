@@ -113,7 +113,7 @@ def run_workflow(args):
     print(
         f"""
 ╔═══════════════════════════════════════════╗
-║   微信贴图完整工作流 (v4.8.5)            ║
+║   微信贴图完整工作流 (v4.9.6)            ║
 ╚═══════════════════════════════════════════╝
 
 输入: {args.input[:80]}{'...' if len(args.input) > 80 else ''}
@@ -351,6 +351,11 @@ Post: {'✓ 包含' if getattr(args, 'with_post', True) else '✗ 跳过'}
                 continue
             else:
                 print(f"\n⛔ 工作流在步骤 {step['name']} 中止")
+                # 提示可单独补跑的文档生成命令
+                print("\n[补跑提示] 可单独生成文档：")
+                print(f"  python3 {script_path('generate_tags.py')} --input {manifest} --output {project_root}/tags.md --theme {args.theme}")
+                print(f"  python3 {script_path('generate_session_log.py')} --project {os.path.basename(project_root)} --theme {args.theme} --sticker-count 8 --output {project_root}/session-log.md")
+                print(f"  python3 {script_path('generate_post.py')} --project {project_root} --theme {args.theme} --output {project_root}/post.md")
                 sys.exit(1)
 
     # 最终汇总
@@ -387,7 +392,7 @@ Post: {'✓ 包含' if getattr(args, 'with_post', True) else '✗ 跳过'}
 
 def main():
     ap = argparse.ArgumentParser(
-        description="微信贴图完整工作流（文档复制 → 内容聚合 → manifest → prompts → 图片生成）",
+        description="微信贴图完整工作流（内容聚合 → manifest → prompts → 图片生成 → 打包）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 模式说明:

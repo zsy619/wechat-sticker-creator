@@ -20,7 +20,6 @@ from datetime import date
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.dirname(SCRIPT_DIR)
-TEMPLATE_PATH = os.path.join(SKILL_DIR, 'docs', 'session-log-template.md')
 
 
 # ── Token 估算常量 ──────────────────────────────────────────
@@ -92,81 +91,9 @@ def generate_session_log(project_name, theme, sticker_count, output,
         grand_total = inp + out
         cost_total = calc_cost(inp, out)
 
-    if not os.path.exists(TEMPLATE_PATH):
-        return _generate_inline(project_name, theme, sticker_count, output,
-                                input_type, generation_mode, input_total,
-                                output_total, grand_total, cost_total, status, verbose)
-
-    with open(TEMPLATE_PATH, 'r', encoding='utf-8') as f:
-        template = f.read()
-
-    # 计算各阶段 duration 估算
-    prompts_dur_min = sticker_count * 3
-    prompts_dur_max = sticker_count * 8
-    frames_dur_min = sticker_count * 15
-    frames_dur_max = sticker_count * 60
-
-    replacements = {
-        '{project_name}': project_name,
-        '{theme}': theme,
-        '{sticker_count}': str(sticker_count),
-        '{generated_date}': date.today().isoformat(),
-        '{status}': status,
-        '{input_type}': input_type,
-        '{generation_mode}': generation_mode,
-        '{input_total}': str(input_total),
-        '{output_total}': str(output_total),
-        '{grand_total}': str(grand_total),
-        '{cost_total}': f'{float(cost_total):.4f}',
-        # 各阶段 token 估算
-        '{content_analysis_input}': str(est['content_analysis']['input']),
-        '{content_analysis_output}': str(est['content_analysis']['output']),
-        '{content_analysis_total}': str(est['content_analysis']['input'] + est['content_analysis']['output']),
-        '{content_analysis_cost}': f'{calc_cost(est["content_analysis"]["input"], est["content_analysis"]["output"]):.4f}',
-        '{manifest_input}': str(est['manifest']['input']),
-        '{manifest_output}': str(est['manifest']['output']),
-        '{manifest_total}': str(est['manifest']['input'] + est['manifest']['output']),
-        '{manifest_cost}': f'{calc_cost(est["manifest"]["input"], est["manifest"]["output"]):.4f}',
-        '{prompts_input}': str(est['prompts']['input']),
-        '{prompts_output}': str(est['prompts']['output']),
-        '{prompts_total}': str(est['prompts']['input'] + est['prompts']['output']),
-        '{prompts_cost}': f'{calc_cost(est["prompts"]["input"], est["prompts"]["output"]):.4f}',
-        '{frames_input}': str(est['frames']['input']),
-        '{frames_output}': str(est['frames']['output']),
-        '{frames_total}': str(est['frames']['input'] + est['frames']['output']),
-        '{frames_cost}': f'{calc_cost(est["frames"]["input"], est["frames"]["output"]):.4f}',
-        # 时长估算
-        '{prompts_duration_min}': str(prompts_dur_min),
-        '{prompts_duration_max}': str(prompts_dur_max),
-        '{frames_duration_min}': str(frames_dur_min),
-        '{frames_duration_max}': str(frames_dur_max),
-    }
-
-    content = template
-    for placeholder, value in replacements.items():
-        content = content.replace(placeholder, value)
-
-    # 最后清除残余字面 N（不在 {xxx} 或 ** 中的 N，只剩表格未填充的阶段行）
-    # 先把 {xxx} 和 **xxx** 临时保护起来
-    import uuid
-    protected = {}
-    def protect(m):
-        key = f'__PROTECTED_{uuid.uuid4().hex[:8]}__'
-        protected[key] = m.group(0)
-        return key
-    content = re.sub(r'\{[^}]+\}|\*\*[^*]+\*\*', protect, content)
-    content = re.sub(r'(?<![:¥\d])N(?![:¥\d])', '—', content)
-    for key, val in protected.items():
-        content = content.replace(key, val)
-
-    os.makedirs(os.path.dirname(os.path.abspath(output)) or '.', exist_ok=True)
-    with open(output, 'w', encoding='utf-8') as f:
-        f.write(content)
-
-    if verbose:
-        print(f"✅ session-log.md 已生成（模板模式）: {output}")
-
-    return True
+    return _generate_inline(project_name, theme, sticker_count, output,
+                           input_type, generation_mode, input_total,
+                           output_total, grand_total, cost_total, status, verbose)
 
 
 def _generate_inline(project_name, theme, sticker_count, output,
@@ -290,7 +217,16 @@ def main():
     parser.add_argument('--status', default='已完成',
                         help='项目状态')
     parser.add_argument('--quiet', action='store_true')
+    parser.add_argument('--verify', action='store_true',
+                       help='仅验证输出目录，不生成文档')
     args = parser.parse_args()
+
+    # --verify 模式
+    if args.verify:
+        output_dir = os.path.dirname(os.path.abspath(args.output)) or '.'
+        exists = os.path.exists(output_dir)
+        print(f"[verify] {'✅' if exists else '❌'} 输出目录: {output_dir}")
+        return 0 if exists else 1
 
     return 0 if generate_session_log(
         project_name=args.project,

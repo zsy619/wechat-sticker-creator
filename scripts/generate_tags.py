@@ -207,7 +207,7 @@ def build_tags_content(theme, count, keywords, stickers_info):
         " / ".join(wechat_tags),
         "```",
         "",
-        f"> 由结构化模板生成于 {datetime.date.today().isoformat()}（如需更精准的标签，请使用 --agent-mode）",
+        f"> 由结构化模板生成于 {datetime.date.today().isoformat()}",
     ]
     return '\n'.join(lines)
 
@@ -220,9 +220,17 @@ def main():
                    help='tags.md 输出路径')
     ap.add_argument('--theme', default=None,
                    help='主题（manifest 未指定时使用）')
+    ap.add_argument('--verify', action='store_true',
+                   help='仅验证输入文件，不生成文档')
     args = ap.parse_args()
 
     input_path = args.input
+
+    # --verify 模式
+    if args.verify:
+        exists = os.path.exists(input_path)
+        print(f"[verify] {'✅' if exists else '❌'} {input_path}")
+        return 0 if exists else 1
 
     # 解析输入
     if os.path.isfile(input_path):
