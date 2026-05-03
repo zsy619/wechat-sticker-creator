@@ -268,7 +268,7 @@ visual_elements: [equals_sign, brain, checkmark]
 
 ```
 remotion/{sticker-name}/
-wechat-stickers/{项目根目录}/                              ← 用户项目目录
+~/wechat-stickers/{项目根目录}/                              ← 用户项目目录
 │
 ├── prompts/                             ← 贴图提示词源文件（输入）
 │   ├── 01-贴图1.md

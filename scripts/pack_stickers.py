@@ -51,19 +51,26 @@ def find_sticker_files(input_dir, filter_ext=None):
     return sorted(files, key=natural_sort_key)
 
 def _run(cmd, capture=True):
-    """执行 ffmpeg 命令，返回是否成功"""
+    """执行 ffmpeg 命令，返回是否成功。cmd 可以是字符串或列表。"""
     try:
-        result = subprocess.run(
-            cmd, shell=True,
-            capture_output=capture, text=True,
-            timeout=120
-        )
+        if isinstance(cmd, str):
+            result = subprocess.run(
+                cmd, shell=True,
+                capture_output=capture, text=True,
+                timeout=120
+            )
+        else:
+            result = subprocess.run(
+                cmd,
+                capture_output=capture, text=True,
+                timeout=120
+            )
         return result.returncode == 0, result.stdout, result.stderr
     except Exception as e:
         return False, '', str(e)
 
 def generate_cover(input_dir, output_path, size, filter_ext=None):
-    """生成封面图：将前6张贴图缩放后横向拼接（ffmpeg tile）"""
+    """生成封面图：将前6张贴图缩放后横向拼接（ffmpeg hstack）"""
     w, h = size
     files = find_sticker_files(input_dir, filter_ext)[:6]
 
@@ -71,36 +78,36 @@ def generate_cover(input_dir, output_path, size, filter_ext=None):
         print(f"[警告] 未找到贴图文件，无法生成封面", file=__import__('sys').stderr)
         return False
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # 将前6张按序编号
-        for i, fname in enumerate(files):
-            src = os.path.join(input_dir, fname)
-            dst = os.path.join(tmpdir, f"{i:02d}{os.path.splitext(fname)[1]}")
-            shutil.copy2(src, dst)
+    cols = len(files)
+    thumb_w = w // cols
+    thumb_h = h
 
-        # ffmpeg tile 拼接：6图横向排列，每张高 h，步长 h（保持3:4比例裁剪）
-        cols = len(files)
-        thumb_w = w // cols
-        thumb_h = h
+    # 构建 scale crop 滤镜链和 hstack 输入链
+    scale_crop_labels = []
+    for i in range(cols):
+        scale_crop_labels.append(f"[{i}:v]scale={thumb_w}:{thumb_h}:force_original_aspect_ratio=increase,crop={thumb_w}:{thumb_h}[s{i}]")
 
-        # tile=6x1:layout=0_0:padding=0:color=0x00000000
-        cmd = (
-            f"ffmpeg -y -hide_banner -loglevel error "
-            f"-framerate 1 "
-            f"-i '{tmpdir}/%02d.png' "
-            f"-vf 'scale={thumb_w}:{thumb_h}:force_original_aspect_ratio=increase,crop={thumb_w}:{thumb_h},tile={cols}x1:layout=0_0' "
-            f"-frames:v 1 '{output_path}'"
-        )
-        ok, stdout, stderr = _run(cmd)
-        if ok:
-            print(f"  ✅ 封面: {output_path} ({w}x{h})")
-            return True
-        else:
-            print(f"[警告] 封面生成失败: {stderr}")
-            return False
+    stack_inputs = ''.join(f"[s{i}]" for i in range(cols))
+    filter_complex = ';'.join(scale_crop_labels) + f';{stack_inputs}hstack=inputs={cols}[out]'
+
+    # 构建 ffmpeg 输入参数
+    inputs = []
+    for fname in files:
+        inputs.extend(['-i', os.path.join(input_dir, fname)])
+
+    cmd = ['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error'] + inputs + \
+          ['-filter_complex', filter_complex, '-map', '[out]', '-frames:v', '1', output_path]
+
+    ok, stdout, stderr = _run(cmd)
+    if ok:
+        print(f"  ✅ 封面: {output_path} ({w}x{h})")
+        return True
+    else:
+        print(f"[警告] 封面生成失败: {stderr}")
+        return False
 
 def generate_thumbnail(input_dir, output_path, size, filter_ext=None):
-    """生成缩略图：将所有贴图缩放后纵向拼接（ffmpeg tile，最多20张）"""
+    """生成缩略图：将所有贴图缩放后纵向拼接（ffmpeg vstack，最多20张）"""
     w, h = size
     files = find_sticker_files(input_dir, filter_ext)
 
@@ -114,26 +121,29 @@ def generate_thumbnail(input_dir, output_path, size, filter_ext=None):
     count = len(files)
     thumb_h = max(1, h // count)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        for i, fname in enumerate(files):
-            src = os.path.join(input_dir, fname)
-            dst = os.path.join(tmpdir, f"{i:02d}{os.path.splitext(fname)[1]}")
-            shutil.copy2(src, dst)
+    # 构建 scale crop 滤镜链和 vstack 输入链
+    scale_crop_labels = []
+    for i in range(count):
+        scale_crop_labels.append(f"[{i}:v]scale={thumb_w}:{thumb_h}:force_original_aspect_ratio=increase,crop={thumb_w}:{thumb_h}[s{i}]")
 
-        cmd = (
-            f"ffmpeg -y -hide_banner -loglevel error "
-            f"-framerate 1 "
-            f"-i '{tmpdir}/%02d.png' "
-            f"-vf 'scale={thumb_w}:{thumb_h}:force_original_aspect_ratio=increase,crop={thumb_w}:{thumb_h},tile=1x{count}:layout=0_0' "
-            f"-frames:v 1 '{output_path}'"
-        )
-        ok, stdout, stderr = _run(cmd)
-        if ok:
-            print(f"  ✅ 缩略图: {output_path} ({w}x{h}, {len(files)} 张)")
-            return True
-        else:
-            print(f"[警告] 缩略图生成失败: {stderr}")
-            return False
+    stack_inputs = ''.join(f"[s{i}]" for i in range(count))
+    filter_complex = ';'.join(scale_crop_labels) + f';{stack_inputs}vstack=inputs={count}[out]'
+
+    # 构建 ffmpeg 输入参数
+    inputs = []
+    for fname in files:
+        inputs.extend(['-i', os.path.join(input_dir, fname)])
+
+    cmd = ['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error'] + inputs + \
+          ['-filter_complex', filter_complex, '-map', '[out]', '-frames:v', '1', output_path]
+
+    ok, stdout, stderr = _run(cmd)
+    if ok:
+        print(f"  ✅ 缩略图: {output_path} ({w}x{h}, {len(files)} 张)")
+        return True
+    else:
+        print(f"[警告] 缩略图生成失败: {stderr}")
+        return False
 
 def create_zip(input_dir, output_path, filter_ext=None):
     """将 input_dir 下的贴图打包为 ZIP，可选按扩展名过滤"""

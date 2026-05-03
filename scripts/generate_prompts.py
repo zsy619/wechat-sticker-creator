@@ -11,7 +11,7 @@ Usage:
         --output prompts/
 """
 
-import os, re, argparse
+import os, sys, re, argparse
 
 # ── 词汇表（来自 _vocab 共享模块）────────────────────────────
 try:
@@ -172,6 +172,11 @@ def main():
     print(f"[解析 manifest] {args.input}")
     stickers = parse_manifest(args.input)
     print(f"[贴图数量] {len(stickers)} 张")
+
+    if len(stickers) == 0:
+        print(f"\n❌ 错误：未能从 manifest 中解析到任何贴图", file=sys.stderr)
+        print(f"   请检查 manifest 格式是否正确（需包含 ## 贴图1: 等章节）", file=sys.stderr)
+        sys.exit(1)
 
     os.makedirs(args.output, exist_ok=True)
 

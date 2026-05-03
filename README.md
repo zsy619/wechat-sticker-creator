@@ -83,7 +83,7 @@
 生成的表情包项目会保存在以下目录结构中：
 
 ```
-wechat-stickers/{项目根目录}/                              ← 用户项目目录
+~/wechat-stickers/{项目目录}/                              ← 用户项目目录
 │
 ├── prompts/                             ← 贴图提示词源文件（输入）
 │   ├── 01-贴图1.md
@@ -223,7 +223,7 @@ wechat-stickers/{项目根目录}/                              ← 用户项目
 主题: 摸鱼神器
 输入类型: 主题词
 贴图数量: 6 张
-输出目录: wechat-stickers/moyu-shenqi/
+输出目录: ~/wechat-stickers/moyu-shenqi/
 
 生成文件:
   ✓ project.yaml          - 项目元数据
@@ -309,20 +309,20 @@ python3 generate_cover.py --output assets/thumb.png \
 当用户说"做微信贴图"后，按以下步骤创建项目：
 
 ```bash
-# 1. 创建项目根目录
-mkdir -p wechat-stickers/{topic-slug}/prompts
+# 1. 创建项目目录
+mkdir -p ~/wechat-stickers/{topic-slug}/prompts
 
 # 2. 生成 prompts/ 贴图提示词文件（由 AI 自动生成）
 # 3. 运行图片生成
 python3 generate_frames.py \
-  --input wechat-stickers/{topic-slug}/prompts/ \
-  --output wechat-stickers/{topic-slug}/assets-{theme}/ \
+  --input ~/wechat-stickers/{topic-slug}/prompts/ \
+  --output ~/wechat-stickers/{topic-slug}/assets-{theme}/ \
   --theme cyberpunk
 ```
 
 **目录结构**：
 ```
-wechat-stickers/{topic-slug}/
+~/wechat-stickers/{topic-slug}/
 ├── prompts/           ← 贴图提示词（AI 生成）
 ├── assets-cyberpunk/  ← 生成的图片（.png 或 .gif）
 ├── remotion-sticker/  ← Remotion 项目（保留，可调整动画）

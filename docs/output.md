@@ -11,7 +11,7 @@
 ### ZIP 打包（可选）
 
 ```bash
-cd wechat-stickers/{slug}/assets-{theme}
+cd ~/wechat-stickers/{slug}/assets-{theme}
 zip -r ../output/stickers-{slug}-{theme}.zip *.png
 ```
 
@@ -26,7 +26,7 @@ zip -r ../output/stickers-{slug}-{theme}.zip *.png
 生成方式: AI / Remotion
 风格: {theme}
 贴图数量: {N} 张
-输出目录: wechat-stickers/{slug}/assets-{theme}/
+输出目录: ~/wechat-stickers/{slug}/assets-{theme}/
 
 标签推荐:
   #微信表情 #微信贴图 #AI工具 #科技感 #赛博朋克

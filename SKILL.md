@@ -1,7 +1,7 @@
 ---
 name: wechat-sticker-skill
 description: Create WeChat emoji sticker series from any input (URL, topic, or content). Use when user asks to "做微信贴图", "微信贴图", "创建微信贴图包", "WeChat stickers", "微信emoji", "根据内容生成贴图", "做一套贴图", "生成贴图". Triggers on sticker creation, emoji design, reaction images, or any WeChat sticker-related request.
-version: 4.9.0
+version: 4.9.4
 tags: ["微信", "贴图", "表情包", "微信表情包", "微信贴图", "帧动画", "图片生成"]
 metadata:
   author: zhushuyan
@@ -62,23 +62,20 @@ wechat-stickers/                    ← 技能根目录
 │   ├── generate_frames.py                ← 节点④：图片生成（AI → Remotion 两段式）
 │   ├── pack_stickers.py                  ← 节点⑤：打包 ZIP + 生成封面/缩略图
 │   ├── qa_check.py                       ← 节点⑥：QA 自动化检查（尺寸/格式/词汇表）
-│   ├── generate_tags.py                  ← 标签生成（manifest/prompts → tags.md）
-│   ├── generate_session_log.py            ← Session Log 生成（project/docs/session-log.md）
-│   ├── generate_post.py                   ← post.md 生成（微信公众号推广文档）
-│   └── copy_docs.py                      ← 技能文档复制到项目 docs/
+│   ├── generate_tags.py                  ← 标签生成（从 prompts 提取关键词）
+│   ├── generate_session_log.py            ← Session Log 生成（token 估算 + 阶段记录）
+│   └── generate_post.py                   ← 公众号推广文档（从 manifest 提取贴图详情）
 │
-└── docs/                                ← 规范文档（按需复制到项目 docs/）
+└── docs/                                ← 技能内部参考文档（不复制到项目）
     ├── workflow.md                       ← 核心工作流
     ├── prompts-format.md                ← Prompt 生成规范
     ├── content-format.md                ← 内容格式（content-analysis / manifest / prompts）
-    ├── copy.md                          ← 文档复制说明（哪些复制、哪些生成）
     ├── frame-design.md                  ← Remotion 帧设计规范
     ├── remotion-projects.md             ← Remotion 项目完整结构
     ├── project-structure.md              ← 项目目录结构
     ├── image-generation.md              ← 两段式图像生成流程
     ├── output.md                        ← 最终输出与打包
     ├── qa.md                            ← 质量检查
-    └── session-log-template.md          ← Session Log 模板（由 generate_session_log.py 使用，不拷贝到项目）
 
 ```
 
@@ -93,38 +90,38 @@ wechat-stickers/                    ← 技能根目录
 # 一次性完成：内容聚合 → manifest → prompts → 图片生成
 python3 scripts/run_full_pipeline.py \
   --input "AI编程助手" \
-  --output wechat-stickers/ai-coding-assistant \
+  --output ~/wechat-stickers/ai-coding-assistant \
   --theme cyberpunk
 
 # ── 分步执行（调试用）───────────────────────────────────
 # 步骤1：内容聚合分析
 python3 scripts/generate_content_analysis.py \
   --input "AI编程助手" \
-  --output wechat-stickers/ai-coding-assistant/
+  --output ~/wechat-stickers/ai-coding-assistant/
 
 # 步骤2：生成 manifest
 python3 scripts/generate_manifest.py \
-  --input wechat-stickers/ai-coding-assistant/content-analysis.md \
-  --output wechat-stickers/ai-coding-assistant/sticker-manifest.md
+  --input ~/wechat-stickers/ai-coding-assistant/content-analysis.md \
+  --output ~/wechat-stickers/ai-coding-assistant/sticker-manifest.md
 
 # 步骤3：生成 prompts
 python3 scripts/generate_prompts.py \
-  --input wechat-stickers/ai-coding-assistant/sticker-manifest.md \
-  --output wechat-stickers/ai-coding-assistant/prompts/
+  --input ~/wechat-stickers/ai-coding-assistant/sticker-manifest.md \
+  --output ~/wechat-stickers/ai-coding-assistant/prompts/
 
 # 步骤4：图片生成（两段式：AI → Remotion）
 python3 scripts/generate_frames.py \
-  --input wechat-stickers/ai-coding-assistant/prompts/ \
-  --output wechat-stickers/ai-coding-assistant/assets-cyberpunk/ \
+  --input ~/wechat-stickers/ai-coding-assistant/prompts/ \
+  --output ~/wechat-stickers/ai-coding-assistant/assets-cyberpunk/ \
   --theme cyberpunk
 
 # 步骤5：打包 + QA 检查
 python3 scripts/pack_stickers.py \
-  --input wechat-stickers/ai-coding-assistant/assets-cyberpunk/ \
-  --output wechat-stickers/ai-coding-assistant/stickers.zip
+  --input ~/wechat-stickers/ai-coding-assistant/assets-cyberpunk/ \
+  --output ~/wechat-stickers/ai-coding-assistant/stickers.zip
 
 python3 scripts/qa_check.py \
-  --input wechat-stickers/ai-coding-assistant/assets-cyberpunk/ \
+  --input ~/wechat-stickers/ai-coding-assistant/assets-cyberpunk/ \
   --vocabulary docs/prompts-format.md
 ```
 
@@ -186,6 +183,8 @@ Remotion 失败则报错，不再降级。
 `cyberpunk` / `kawaii` / `neon` / `retro` / `hand-drawn` / `minimal` / `meme`
 
 ## 详细文档
+
+> **项目文档说明**：`tags.md` / `session-log.md` / `post.md` 由脚本基于项目实际内容生成，直接输出到项目根目录。技能 `docs/` 目录下的文档为内部参考，不复制到项目。
 
 - **Remotion 帧设计** → [docs/frame-design.md](docs/frame-design.md)
 - **Remotion 项目结构** → [docs/remotion-projects.md](docs/remotion-projects.md)

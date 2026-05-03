@@ -138,8 +138,12 @@ def build_manifest_prompt(analysis, project_name, theme_fallback):
 """
 
 
+class LLMError(Exception):
+    """LLM 调用失败时抛出此异常"""
+    pass
+
 def call_llm(prompt):
-    """调用 LLM 生成 manifest（使用 claude --print）"""
+    """调用 LLM 生成 manifest（使用 claude --print）；失败时抛出 LLMError"""
     try:
         result = subprocess.run(
             ["claude", "--print", "-p", prompt],
@@ -151,14 +155,11 @@ def call_llm(prompt):
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
+        raise LLMError(f"claude exit {result.returncode}: {result.stderr[:200]}")
     except FileNotFoundError:
-        pass
-    except Exception:
-        pass
-    return (
-        "[LLM unavailable - please design manifest manually]\n\n"
-        "请参考上方内容分析的关键词汇和方向，手动创建 sticker-manifest.md。"
-    )
+        raise LLMError("claude CLI 未找到（请确保已安装）")
+    except Exception as e:
+        raise LLMError(str(e)) from e
 
 
 # ── 主函数 ────────────────────────────────────────────────
@@ -186,7 +187,12 @@ def main():
 
     print(f"[LLM] 正在生成 manifest...")
     prompt = build_manifest_prompt(analysis, args.project_name, args.theme)
-    manifest_content = call_llm(prompt)
+    try:
+        manifest_content = call_llm(prompt)
+    except LLMError as e:
+        print(f"\n❌ LLM 调用失败: {e}", file=sys.stderr)
+        print("   请确保 claude CLI 已安装并登录，或检查网络连接", file=sys.stderr)
+        sys.exit(1)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     with open(args.output, "w") as f:

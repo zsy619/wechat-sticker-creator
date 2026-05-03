@@ -73,8 +73,8 @@
 
 ### 目录冲突解决规则
 
-- 首次创建：`wechat-stickers/{topic-slug}/`
-- 冲突时：`wechat-stickers/{topic-slug}-YYYYMMDD-HHMMSS/`
+- 首次创建：`~/wechat-stickers/{topic-slug}/`
+- 冲突时：`~/wechat-stickers/{topic-slug}-YYYYMMDD-HHMMSS/`
 
 ## 项目目录结构
 

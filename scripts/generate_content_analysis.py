@@ -8,11 +8,11 @@ generate_content_analysis.py - 内容聚合分析
 Usage:
     python3 scripts/generate_content_analysis.py \
         --input "AI编程助手" \
-        --output wechat-stickers/ai-coding-assistant/
+        --output ~/wechat-stickers/ai-coding-assistant/
 
     python3 scripts/generate_content_analysis.py \
         --input "https://github.com/xxx/ai-tool" \
-        --output wechat-stickers/ai-tool/
+        --output ~/wechat-stickers/ai-tool/
 """
 
 import os, sys, re, argparse, subprocess
@@ -145,8 +145,12 @@ def build_content_analysis_prompt(raw_input, input_type, web_results, theme):
 请结合该主题的配色和风格进行推荐。
 """
 
+class LLMError(Exception):
+    """LLM 调用失败时抛出此异常"""
+    pass
+
 def call_llm(prompt):
-    """通过 claude --print -p 直接调用 LLM"""
+    """通过 claude --print -p 直接调用 LLM；失败时抛出 LLMError"""
     try:
         result = subprocess.run(
             ['claude', '--print', '-p', prompt],
@@ -156,22 +160,12 @@ def call_llm(prompt):
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
+        # 非零退出码或空输出 → 失败
+        raise LLMError(f"claude exit {result.returncode}: {result.stderr[:200]}")
     except FileNotFoundError:
-        return _llm_fallback_notice(prompt)
-    except Exception:
-        pass
-    return _llm_fallback_notice(prompt)
-
-def _llm_fallback_notice(prompt):
-    """LLM 不可用时的降级提示"""
-    # 尝试从 prompt 中提取原始输入（作为手动分析线索）
-    match = re.search(r'## 用户输入\s+(.{10,100})', prompt)
-    raw_input = match.group(1) if match else '[未提供]'
-    return (
-        f"[LLM unavailable - 请手动分析]\n\n"
-        f"原始输入：{raw_input}\n\n"
-        f"请参考上方格式，手动创建 content-analysis.md。"
-    )
+        raise LLMError("claude CLI 未找到（请确保已安装）")
+    except Exception as e:
+        raise LLMError(str(e)) from e
 
 # ── 主函数 ────────────────────────────────────────────────
 
@@ -214,10 +208,15 @@ def main():
         web_results.append(f"## {q}\n{r[:500]}")
     web_results_str = '\n\n'.join(web_results)
 
-    # 3. LLM 聚合
+    # 3. LLM 聚合（失败则报错退出，不再静默降级）
     print("[LLM] 正在聚合内容...")
     prompt = build_content_analysis_prompt(raw, input_type, web_results_str, args.theme)
-    analysis = call_llm(prompt)
+    try:
+        analysis = call_llm(prompt)
+    except LLMError as e:
+        print(f"\n❌ LLM 调用失败: {e}", file=sys.stderr)
+        print("   请确保 claude CLI 已安装并登录，或检查网络连接", file=sys.stderr)
+        sys.exit(1)
 
     # 4. 写入文件
     output_path = os.path.join(args.output, 'content-analysis.md')

@@ -2,6 +2,92 @@
 
 All notable changes to the wechat-sticker-skill are documented here.
 
+## [4.9.4] - 2026-05-03
+
+### 修复：真正的 Agent LLM 生成（双调用模式）
+
+**问题**：`--agent-mode` 只是写入提示词到临时文件，内容仍由脚本的硬编码模板生成。三个脚本的 `generate_xxx_agent()` 函数从未被真正调用。
+
+**根因**：
+1. 脚本设计为"LLM 失败则降级到模板"，但从未尝试真正的 LLM 调用
+2. `generate_xxx_agent()` 函数只写提示词文件，返回后由 `main()` 打印提示而不是真正生成
+3. 没有机制让 agent LLM 将生成的内容传回脚本
+
+**解决方案：双调用模式**
+
+```
+┌─────────────────────────────────────────────────────┐
+│  第一次调用（USE_LLM_OUTPUT 未设置）                  │
+│  脚本：解析 manifest/prompts → 构建提示词 → 写入临时文件 │
+│  脚本：exit(1)，打印指令等待 agent LLM 介入            │
+└───────────────────────┬─────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────┐
+│  Agent LLM（execute_code 工具）                       │
+│  读取临时提示词文件 → 调用自身 LLM → 生成内容            │
+└───────────────────────┬─────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────┐
+│  第二次调用（USE_LLM_OUTPUT 已设置）                  │
+│  脚本：读取 LLM 输出内容 → 写入目标 .md 文件           │
+│  脚本：exit(0)，完成                                 │
+└─────────────────────────────────────────────────────┘
+```
+
+**调用方式**：
+```bash
+# 直接调用（agent LLM 读取提示词文件，生成内容后写入 .md）
+python3 scripts/generate_tags.py --input sticker-manifest.md --output docs/tags.md --agent-mode
+python3 scripts/generate_session_log.py --project xxx --theme cyberpunk --sticker-count 8 --agent-mode --output docs/session-log.md
+python3 scripts/generate_post.py --project . --theme cyberpunk --agent-mode --output docs/post.md
+```
+
+**变更文件**：
+- `generate_tags.py` — 重写为双调用模式，`build_agent_prompt()` 构建提示词，`run_agent_mode()` 处理两次调用流程，`build_tags_content_fallback()` 保留为降级
+- `generate_session_log.py` — 同上，`run_agent_mode()` 处理两次调用，`generate_session_log()` 和 `_generate_inline()` 保留为降级
+- `generate_post.py` — 同上，`run_agent_mode()` 处理两次调用，`generate_post()` 保留为降级
+
+---
+
+## [4.9.3] - 2026-05-03
+
+### 修复：文档改为 Agent LLM 生成，移除硬编码模板
+
+**问题**：`generate_tags.py` / `generate_session_log.py` / `generate_post.py` 依赖硬编码模板和固定规则，无法生成有针对性的内容。文档从未通过 agent LLM 生成，导致内容模板化、缺乏针对性。
+
+**根因**：
+1. 这三个脚本依赖外部 `claude` CLI 子进程调用 LLM，但在当前环境中 claude CLI 不可用
+2. 脚本设计为"LLM 失败则降级到模板"，但模板内容与实际贴图内容无关
+3. SKILL.md 和 copy.md 的描述让用户误以为这些文档会自动生成，但实际上只是模板替换
+
+**变更**：
+
+- **A2**: `generate_tags.py` — 重写为结构化内容生成，移除硬编码标签库，改为基于主题和内容智能推断标签；新增 `extract_manifest_info()` 提取贴图详情；frontmatter 新增 `generated: agent-llm`
+- **A3**: `generate_session_log.py` — 新增 `generate_session_log_agent()` 函数，支持 agent LLM 生成模式（`--agent-mode`）；新增 `estimate_tokens()` 和 `calc_cost()` 智能估算 token 消耗；新增内联降级生成（无模板时）；默认 `input_type` 从 `N` 改为 `URL`
+- **A4**: `generate_post.py` — 新增 `generate_post_agent()` 函数，支持 agent LLM 生成模式（`--agent-mode`）；读取 manifest 提取贴图详情和 content-analysis 提取项目描述，生成有针对性的推广文案；保留固定标题模板库作为降级方案
+
+**文档更新**：
+- **A5**: `SKILL.md` — 版本升至 v4.9.3；脚本描述从"manifest/prompts → tags.md"改为"Agent LLM + 结构化模板双模式"；新增文档分类说明
+- **A6**: `docs/copy.md` — 重写分类说明，明确区分"拷贝类文档"和"生成类文档"；新增生成文档的两种模式说明（Agent LLM 模式 vs 结构化模板模式）；新增临时提示词文件说明
+
+### 修复静默失败传播（致命缺陷）
+
+**问题**：LLM 调用失败时，`generate_content_analysis.py` / `generate_manifest.py` 写入 placeholder 后 `exit(0)` 继续执行，导致后续步骤收到损坏内容但无法检测。
+
+**变更**：
+
+- **T1.1**: `generate_content_analysis.py` — `call_llm()` 失败时抛出 `LLMError`，main() 捕获后 `sys.exit(1)`，不再写入 placeholder
+- **T1.2**: `generate_manifest.py` — 同 T1.1
+- **T1.3**: `run_full_pipeline.py` — 步骤1/2 标记 `critical=True`，失败时立即中止，不询问用户
+- **T1.4**: `generate_prompts.py` — 添加 `len(stickers)==0` 校验，报错 `sys.exit(1)`
+
+### 修复 manifest 格式兼容
+
+**问题**：`generate_tags.py` / `generate_post.py` 正则 `r'^## \d+[.-]'` 无法匹配中文格式 `## 贴图1:`，导致贴图数量始终为 0。
+
+- **T2.1**: `generate_tags.py` — 正则改为 `r'^## (?:\d+[.-]|贴图\d+:)'`
+- **T2.2**: `generate_post.py` — 同 T2.1
+
 ## [4.9.1] - 2026-05-03
 
 ### 彻底移除 PIL 依赖
